@@ -1,0 +1,16 @@
+[Unit]
+Description=Mission Control Bridge
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mission-control/bridge
+EnvironmentFile=/etc/mission-control/bridge.env
+ExecStart=/usr/bin/node /opt/mission-control/bridge/dist/index.js
+Restart=always
+RestartSec=5
+User=mission-control
+Group=mission-control
+
+[Install]
+WantedBy=multi-user.target
