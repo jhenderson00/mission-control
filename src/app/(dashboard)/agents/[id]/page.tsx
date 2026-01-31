@@ -5,6 +5,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ConversationView } from "@/components/conversation/conversation-view";
+import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,7 @@ export default function AgentDetailPage({
   const liveStatus = statusByAgent.get(agentId);
   const sessionKey = liveStatus?.currentSession ?? agentData?.sessionId;
   const conversation = useConversation(sessionKey, { limit: 200 });
+  const heartbeatStatus = liveStatus?.status;
 
   const isLoadingEvents = hasConvex && events === undefined;
   const eventList: EventItem[] = hasConvex ? events ?? [] : fallbackEvents;
@@ -161,6 +163,7 @@ export default function AgentDetailPage({
         title={agentData.name}
         description={`Model ${agentData.model} · ${agentData.host.toUpperCase()} node`}
         badge={agentData.status === "active" ? "Live" : agentData.status}
+        titleAccessory={<HeartbeatIndicator status={heartbeatStatus} />}
       />
 
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
