@@ -2,6 +2,13 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, render } from "@testing-library/react";
 import { PageHeader } from "@/components/dashboard/page-header";
 
+vi.mock("convex/react", () => ({
+  useConvexConnectionState: () => ({
+    isWebSocketConnected: true,
+    hasEverConnected: true,
+  }),
+}));
+
 describe("PageHeader", () => {
   beforeEach(() => {
     vi.useFakeTimers();

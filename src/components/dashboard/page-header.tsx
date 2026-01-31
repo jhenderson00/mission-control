@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  ConnectionBadge,
+  ConnectionBanner,
+} from "@/components/dashboard/connection-badge";
 
 type PageHeaderProps = {
   title: string;
@@ -78,6 +82,7 @@ export function PageHeader({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="flex items-center gap-3">
+          <ConnectionBadge className="shrink-0" />
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             <span>Systems nominal</span>
@@ -86,6 +91,7 @@ export function PageHeader({
           <LiveClock />
         </div>
       </div>
+      <ConnectionBanner />
       <Separator />
     </div>
   );
