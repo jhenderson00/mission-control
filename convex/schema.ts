@@ -139,38 +139,6 @@ export default defineSchema({
     .index("by_agent", ["agentId"]),
 
   /**
-   * AgentControlOperations - Pending/acknowledged control commands
-   */
-  agentControlOperations: defineTable({
-    operationId: v.string(),
-    agentIds: v.array(v.string()),
-    command: v.union(
-      v.literal("pause"),
-      v.literal("resume"),
-      v.literal("redirect"),
-      v.literal("kill"),
-      v.literal("restart"),
-      v.literal("priority")
-    ),
-    params: v.record(v.string(), v.any()),
-    status: v.union(
-      v.literal("queued"),
-      v.literal("sent"),
-      v.literal("acked"),
-      v.literal("failed"),
-      v.literal("timed-out")
-    ),
-    requestedBy: v.string(),
-    requestedAt: v.number(),
-    ackedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    error: v.optional(v.string()),
-  })
-    .index("by_agent", ["agentIds", "requestedAt"])
-    .index("by_operator", ["requestedBy", "requestedAt"])
-    .index("by_status", ["status", "requestedAt"]),
-
-  /**
    * Messages - Conversation messages (denormalized for fast queries)
    */
   messages: defineTable({
