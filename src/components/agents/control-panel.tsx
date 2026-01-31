@@ -37,8 +37,12 @@ type DispatchStatus = {
   message: string;
 };
 
+// Check if controls API is available (Convex may not have it deployed yet)
+const hasControlsApi = typeof api.controls?.dispatch !== "undefined";
+
 export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): React.ReactElement {
-  const dispatch = useAction(api.controls.dispatch);
+  // Only call useAction if the API exists to avoid crashes
+  const dispatch = hasControlsApi ? useAction(api.controls.dispatch) : null;
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [status, setStatus] = useState<DispatchStatus | null>(null);
 
@@ -49,7 +53,7 @@ export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): 
   const [overrideDuration, setOverrideDuration] = useState("");
   const [sessionKey, setSessionKey] = useState("");
 
-  const isBlocked = disabled || pendingAction !== null;
+  const isBlocked = disabled || !dispatch || pendingAction !== null;
   const displayedStatus =
     status ??
     (disabled
@@ -57,17 +61,24 @@ export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): 
           tone: "error",
           message: "Controls are unavailable without a Convex connection.",
         }
-      : null);
+      : !dispatch
+        ? {
+            tone: "error",
+            message: "Controls API not deployed yet. Deploy Convex to enable.",
+          }
+        : null);
 
   const runCommand = async (
     actionKey: string,
     command: "agent.pause" | "agent.resume" | "agent.redirect" | "agent.priority.override" | "agent.kill" | "agent.restart",
     params?: Record<string, unknown>
   ): Promise<void> => {
-    if (disabled) {
+    if (disabled || !dispatch) {
       setStatus({
         tone: "error",
-        message: "Controls are unavailable without a Convex connection.",
+        message: disabled
+          ? "Controls are unavailable without a Convex connection."
+          : "Controls API not deployed yet.",
       });
       return;
     }
