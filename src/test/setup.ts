@@ -75,6 +75,10 @@ vi.mock("@/convex/_generated/api", () => ({
     conversations: {
       listBySession: "conversations.listBySession",
     },
+    controls: {
+      dispatch: "controls.dispatch",
+      bulkDispatch: "controls.bulkDispatch",
+    },
   },
 }));
 
