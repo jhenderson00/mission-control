@@ -93,7 +93,6 @@ export function useStateSync<T>({
   const subscription = useConnectionStore((state) => state.subscriptions[key]);
   const lastReconnectAt = useConnectionStore((state) => state.lastReconnectAt);
 
-  const lastItemsRef = useRef<T[]>(items ?? []);
   const lastUpdateKeyRef = useRef<string>("");
 
   useEffect(() => {
@@ -127,32 +126,26 @@ export function useStateSync<T>({
   }, [gapThresholdMs, items, latestEventTime, subscription?.lastEventTime]);
 
   const computedGap = hasSequenceGap || (subscription?.needsSync && hasTimeGap);
-  const now = useMemo(() => Date.now(), [latestEventTime, items]);
-  const computedStale =
-    latestEventTime > 0 && now - latestEventTime > staleAfterMs;
 
   const updateKey = useMemo(() => {
     if (!incomingItems) return "";
-    return `${incomingItems.length}:${latestEventTime}:${computedGap ? 1 : 0}:${
-      computedStale ? 1 : 0
-    }`;
-  }, [incomingItems, latestEventTime, computedGap, computedStale]);
-
-  useEffect(() => {
-    if (!incomingItems) return;
-    lastItemsRef.current = incomingItems;
-  }, [incomingItems]);
+    return `${incomingItems.length}:${latestEventTime}:${computedGap ? 1 : 0}`;
+  }, [incomingItems, latestEventTime, computedGap]);
 
   useEffect(() => {
     if (!items || !incomingItems) return;
     if (updateKey === lastUpdateKeyRef.current) return;
     lastUpdateKeyRef.current = updateKey;
 
+    const now = Date.now();
+    const nextIsStale =
+      latestEventTime > 0 && now - latestEventTime > staleAfterMs;
+
     updateSubscription(key, {
       lastEventTime: latestEventTime,
-      lastUpdatedAt: Date.now(),
+      lastUpdatedAt: now,
       hasGap: computedGap,
-      isStale: computedStale,
+      isStale: nextIsStale,
     });
 
     if (subscription?.needsSync && lastReconnectAt > 0) {
@@ -164,7 +157,7 @@ export function useStateSync<T>({
     updateKey,
     latestEventTime,
     computedGap,
-    computedStale,
+    staleAfterMs,
     key,
     updateSubscription,
     subscription?.needsSync,
@@ -173,10 +166,10 @@ export function useStateSync<T>({
   ]);
 
   return {
-    items: incomingItems ?? lastItemsRef.current,
+    items: incomingItems ?? [],
     latestEventTime,
     hasGap: items ? computedGap : subscription?.hasGap ?? false,
-    isStale: items ? computedStale : subscription?.isStale ?? false,
+    isStale: subscription?.isStale ?? false,
     isSyncing: subscription?.needsSync ?? false,
   };
 }

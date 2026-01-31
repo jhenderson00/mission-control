@@ -92,6 +92,8 @@ describe("events functions", () => {
 
   it("summarizes payload shapes into content", async () => {
     const ctx = createMockCtx();
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
     await ctx.db.insert("events", {
       eventId: "evt_str",
       eventType: "chat",
@@ -132,6 +134,16 @@ describe("events functions", () => {
       payload: { status: "ok" },
       receivedAt: Date.now(),
     });
+    await ctx.db.insert("events", {
+      eventId: "evt_circular",
+      eventType: "agent",
+      agentId: "agent_5",
+      sessionKey: "session_5",
+      timestamp: new Date().toISOString(),
+      sequence: 5,
+      payload: circular,
+      receivedAt: Date.now(),
+    });
 
     const recent = await events.listRecent._handler(ctx, { limit: 10 });
     const contents = recent.map((event) => event.content);
@@ -142,7 +154,104 @@ describe("events functions", () => {
         "Object content",
         "Delta content",
         "ok",
+        "agent",
       ])
     );
+  });
+
+  it("stores events idempotently", async () => {
+    const ctx = createMockCtx();
+    const id1 = await events.store._handler(ctx, {
+      eventId: "evt_idempotent",
+      eventType: "agent",
+      agentId: "agent_1",
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { delta: { content: "One" } },
+    });
+    const id2 = await events.store._handler(ctx, {
+      eventId: "evt_idempotent",
+      eventType: "agent",
+      agentId: "agent_1",
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { delta: { content: "One" } },
+    });
+
+    expect(id1).toBe(id2);
+  });
+
+  it("ingests events and routes by type", async () => {
+    const ctx = { runMutation: vi.fn(async () => {}) };
+    const payload = [
+      {
+        eventId: "evt_agent",
+        eventType: "agent",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: { delta: { content: "hello" } },
+      },
+      {
+        eventId: "evt_chat",
+        eventType: "chat",
+        agentId: "agent_2",
+        sessionKey: "session_2",
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        payload: { content: "chat" },
+      },
+      {
+        eventId: "evt_presence",
+        eventType: "presence",
+        agentId: "agent_3",
+        sessionKey: "session_3",
+        timestamp: new Date().toISOString(),
+        sequence: 3,
+        payload: { status: "ok" },
+      },
+      {
+        eventId: "evt_other",
+        eventType: "unknown",
+        agentId: "agent_4",
+        sessionKey: "session_4",
+        timestamp: new Date().toISOString(),
+        sequence: 4,
+        payload: { status: "noop" },
+      },
+    ];
+
+    const response = await events.ingest(
+      ctx as never,
+      new Request("https://example.test/ingest", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalled();
+  });
+
+  it("rejects unauthorized or invalid ingest payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const unauthorized = await events.ingest(
+      { runMutation: vi.fn() } as never,
+      new Request("https://example.test/ingest", { method: "POST", body: "{}" })
+    );
+    expect(unauthorized.status).toBe(401);
+
+    process.env.BRIDGE_SECRET = "";
+    const invalid = await events.ingest(
+      { runMutation: vi.fn() } as never,
+      new Request("https://example.test/ingest", { method: "POST", body: "{}" })
+    );
+    expect(invalid.status).toBe(400);
+
+    process.env.BRIDGE_SECRET = originalSecret;
   });
 });

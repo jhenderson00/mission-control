@@ -1,96 +1,124 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { useQuery } from "convex/react";
-import {
-  useActivityFeed,
-  useAgentStatus,
-  useConversation,
-} from "@/lib/realtime";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { useActivityFeed, useAgentStatus, useConversation } from "@/lib/realtime";
+import { useConnectionStore } from "@/lib/realtime/connection-store";
+import { useConvexConnectionState, useQuery } from "convex/react";
 
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
-  useConvexConnectionState: () => ({
-    isWebSocketConnected: true,
-    hasEverConnected: true,
-  }),
+  useConvexConnectionState: vi.fn(),
 }));
 
 const useQueryMock = vi.mocked(useQuery);
+const useConnectionStateMock = vi.mocked(useConvexConnectionState);
 
-function ActivityProbe() {
-  const { events, isLoading } = useActivityFeed({ limit: 2 });
-  return (
-    <div data-testid="activity" data-loading={String(isLoading)}>
-      {events.length}
-    </div>
-  );
-}
-
-function AgentStatusProbe() {
-  const { statuses } = useAgentStatus();
-  return <div data-testid="status">{statuses.length}</div>;
-}
-
-function ConversationProbe({ sessionKey }: { sessionKey: string }) {
-  const { messages } = useConversation(sessionKey, { limit: 2 });
-  return <div data-testid="conversation">{messages.length}</div>;
-}
+const connectedState = {
+  isWebSocketConnected: true,
+  hasEverConnected: true,
+};
 
 describe("realtime hooks", () => {
+  beforeEach(() => {
+    useQueryMock.mockReset();
+    useConnectionStateMock.mockReturnValue(connectedState);
+    useConnectionStore.setState({
+      status: "connecting",
+      state: null,
+      lastUpdated: 0,
+      lastError: undefined,
+      lastReconnectAt: 0,
+      subscriptions: {},
+    });
+  });
+
   afterEach(() => {
     useQueryMock.mockReset();
   });
 
-  it("returns activity feed results", () => {
-    useQueryMock.mockImplementation((query) => {
-      if (query === "events.listRecent") {
-        return [
-          {
-            _id: "event_1",
-            agentId: "agent_alpha",
-            createdAt: 10,
-            type: "chat",
-            content: "Hello",
-          },
-        ];
-      }
-      return undefined;
-    });
+  it("useActivityFeed tracks loading and returns events", () => {
+    useQueryMock.mockReturnValue(undefined);
 
-    render(<ActivityProbe />);
-    const node = screen.getByTestId("activity");
-    expect(node.textContent).toBe("1");
-    expect(node.getAttribute("data-loading")).toBe("false");
-  });
+    const { result, rerender } = renderHook(() =>
+      useActivityFeed({ type: "chat", limit: 2 })
+    );
 
-  it("returns agent status results", () => {
+    expect(result.current.isLoading).toBe(true);
+
     useQueryMock.mockReturnValue([
       {
-        agentId: "agent_alpha",
-        status: "online",
-        lastHeartbeat: 20,
-        lastActivity: 25,
+        _id: "event_1",
+        agentId: "agent_1",
+        createdAt: 1000,
+        type: "chat",
+        content: "Hello",
       },
     ]);
 
-    render(<AgentStatusProbe />);
-    expect(screen.getByTestId("status").textContent).toBe("1");
+    rerender();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.events).toHaveLength(1);
   });
 
-  it("returns conversation messages", () => {
+  it("useAgentStatus builds a lookup map", () => {
+    useQueryMock.mockReturnValue([
+      {
+        agentId: "agent_1",
+        status: "online",
+        lastHeartbeat: 100,
+        lastActivity: 120,
+      },
+    ]);
+
+    const { result } = renderHook(() =>
+      useAgentStatus({ agentIds: ["agent_1"] })
+    );
+
+    expect(useQueryMock.mock.calls[0]?.[1]).toEqual({
+      agentIds: ["agent_1"],
+    });
+    expect(result.current.statusByAgent.get("agent_1")?.status).toBe("online");
+  });
+
+  it("useAgentStatus omits empty agent id filters", () => {
+    useQueryMock.mockReturnValueOnce([]);
+
+    renderHook(() => useAgentStatus({ agentIds: [] }));
+    expect(useQueryMock.mock.calls[0]?.[1]).toEqual({ agentIds: undefined });
+  });
+
+  it("useConversation skips when session key is missing", () => {
+    useQueryMock.mockReturnValueOnce([]);
+
+    const { result } = renderHook(() => useConversation(undefined));
+    expect(useQueryMock.mock.calls[0]?.[1]).toBe("skip");
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it("useConversation returns messages and streaming state", () => {
     useQueryMock.mockReturnValue([
       {
         sessionKey: "session_1",
-        agentId: "agent_alpha",
+        agentId: "agent_1",
         role: "assistant",
-        content: "Ack",
+        content: "First",
         isStreaming: false,
-        timestamp: 50,
+        timestamp: 10,
         sequence: 1,
+      },
+      {
+        sessionKey: "session_1",
+        agentId: "agent_1",
+        role: "assistant",
+        content: "Second",
+        isStreaming: true,
+        timestamp: 20,
+        sequence: 2,
       },
     ]);
 
-    render(<ConversationProbe sessionKey="session_1" />);
-    expect(screen.getByTestId("conversation").textContent).toBe("1");
+    const { result } = renderHook(() => useConversation("session_1"));
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.latestMessage?.content).toBe("Second");
+    expect(result.current.isStreaming).toBe(true);
   });
 });

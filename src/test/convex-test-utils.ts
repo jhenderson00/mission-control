@@ -7,7 +7,8 @@ type TableName =
   | "decisions"
   | "agentStatus"
   | "messages"
-  | "agentControlOperations";
+  | "agentControlOperations"
+  | "agentControlAudits";
 
 type Document = {
   _id: string;
@@ -86,8 +87,10 @@ function isEqualValue(left: unknown, right: unknown): boolean {
 }
 
 const filterBuilder: FilterBuilder = {
-  eq: (l, r) => (doc) => asExpression(l)(doc) === asExpression(r)(doc),
-  neq: (l, r) => (doc) => asExpression(l)(doc) !== asExpression(r)(doc),
+  eq: (l, r) => (doc) =>
+    isEqualValue(asExpression(l)(doc), asExpression(r)(doc)),
+  neq: (l, r) => (doc) =>
+    !isEqualValue(asExpression(l)(doc), asExpression(r)(doc)),
   lt: (l, r) => (doc) => (asExpression(l)(doc) as never) < (asExpression(r)(doc) as never),
   lte: (l, r) => (doc) => (asExpression(l)(doc) as never) <= (asExpression(r)(doc) as never),
   gt: (l, r) => (doc) => (asExpression(l)(doc) as never) > (asExpression(r)(doc) as never),
@@ -176,6 +179,7 @@ class InMemoryDB {
     agentStatus: [],
     messages: [],
     agentControlOperations: [],
+    agentControlAudits: [],
   };
 
   query(table: TableName) {
