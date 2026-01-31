@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import AgentDetailPage from "@/app/(dashboard)/agents/[id]/page";
 
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
+  useAction: vi.fn(() => vi.fn()),
   useConvexConnectionState: () => ({
     isWebSocketConnected: true,
     hasEverConnected: true,
@@ -12,11 +13,17 @@ vi.mock("convex/react", () => ({
 }));
 
 const useQueryMock = vi.mocked(useQuery);
+const useActionMock = vi.mocked(useAction);
 const originalEnv = process.env.NEXT_PUBLIC_CONVEX_URL;
 
 describe("AgentDetailPage", () => {
+  beforeEach(() => {
+    useActionMock.mockReturnValue(vi.fn());
+  });
+
   afterEach(() => {
     useQueryMock.mockReset();
+    useActionMock.mockReset();
     process.env.NEXT_PUBLIC_CONVEX_URL = originalEnv;
   });
 

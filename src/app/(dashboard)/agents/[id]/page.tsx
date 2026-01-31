@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ConversationView } from "@/components/conversation/conversation-view";
 import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
+import { ControlPanel } from "@/components/agents/control-panel";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,6 @@ import { useAgentStatus, useConversation } from "@/lib/realtime";
 import {
   AlertCircle,
   ArrowRight,
-  Pause,
-  PlayCircle,
-  Siren,
 } from "lucide-react";
 
 const fallbackEvents = [
@@ -167,49 +165,41 @@ export default function AgentDetailPage({
       />
 
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
-        <Card className="border-border/60 bg-card/40">
-          <CardHeader>
-            <CardTitle>Agent Overview</CardTitle>
-            <CardDescription>Session telemetry and task focus.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant="outline"
-                className={statusStyles[agentData.status] ?? ""}
-              >
-                {agentData.status}
-              </Badge>
-              <Badge variant="outline">{agentData.type}</Badge>
-              <Badge variant="outline">{agentData.model}</Badge>
-              <Badge variant="outline">{agentData.host}</Badge>
-            </div>
+        <div className="space-y-4">
+          <Card className="border-border/60 bg-card/40">
+            <CardHeader>
+              <CardTitle>Agent Overview</CardTitle>
+              <CardDescription>Session telemetry and task focus.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className={statusStyles[agentData.status] ?? ""}
+                >
+                  {agentData.status}
+                </Badge>
+                <Badge variant="outline">{agentData.type}</Badge>
+                <Badge variant="outline">{agentData.model}</Badge>
+                <Badge variant="outline">{agentData.host}</Badge>
+              </div>
 
-            <div className="rounded-xl border border-border/60 bg-background/50 p-4">
-              <p className="text-sm font-medium text-foreground">Current task</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {hasConvex
-                  ? currentTask?.title ?? "No active task assigned."
-                  : agentData.currentTask?.title ?? "No active task assigned."}
-              </p>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Uptime: {formatDuration(agentData.startedAt, "Idle")}
-              </p>
-            </div>
+              <div className="rounded-xl border border-border/60 bg-background/50 p-4">
+                <p className="text-sm font-medium text-foreground">Current task</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {hasConvex
+                    ? currentTask?.title ?? "No active task assigned."
+                    : agentData.currentTask?.title ?? "No active task assigned."}
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Uptime: {formatDuration(agentData.startedAt, "Idle")}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm">
-                <Pause className="mr-2 h-4 w-4" /> Pause agent
-              </Button>
-              <Button variant="outline" size="sm">
-                <PlayCircle className="mr-2 h-4 w-4" /> Redirect
-              </Button>
-              <Button variant="secondary" size="sm">
-                <Siren className="mr-2 h-4 w-4" /> Escalate to Josh
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <ControlPanel agentId={agentId} disabled={!hasConvex} />
+        </div>
 
         <Card className="border-border/60 bg-card/40">
           <CardHeader>
