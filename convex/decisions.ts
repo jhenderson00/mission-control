@@ -12,8 +12,7 @@ export const listByAgent = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("decisions")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_agent", (q: any) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
       .order("desc")
       .take(args.limit ?? 50);
   },
@@ -30,8 +29,7 @@ export const listByTask = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("decisions")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_task", (q: any) => q.eq("taskId", args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .order("desc")
       .take(args.limit ?? 50);
   },
@@ -53,8 +51,7 @@ export const listRecent = query({
     if (args.outcome) {
       return await ctx.db
         .query("decisions")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .withIndex("by_outcome", (q: any) => q.eq("outcome", args.outcome!))
+        .withIndex("by_outcome", (q) => q.eq("outcome", args.outcome))
         .order("desc")
         .take(args.limit ?? 50);
     }
@@ -75,10 +72,8 @@ export const getWithChain = query({
     const decision = await ctx.db.get(args.id);
     if (!decision) return null;
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const chain: any[] = [decision];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let current = decision as any;
+    const chain = [decision];
+    let current = decision;
     
     // Walk up the chain
     while (current.parentDecisionId) {
@@ -100,8 +95,7 @@ export const pendingCount = query({
   handler: async (ctx) => {
     const pending = await ctx.db
       .query("decisions")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_outcome", (q: any) => q.eq("outcome", "pending"))
+      .withIndex("by_outcome", (q) => q.eq("outcome", "pending"))
       .collect();
     return pending.length;
   },

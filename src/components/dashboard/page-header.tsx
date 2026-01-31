@@ -10,22 +10,21 @@ type PageHeaderProps = {
   badge?: string;
 };
 
+const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
 function LiveClock() {
   const [time, setTime] = useState<string>("");
 
   useEffect(() => {
     const updateTime = () => {
-      const now = new Date();
-      setTime(
-        now.toLocaleString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        })
-      );
+      setTime(timeFormatter.format(new Date()));
     };
 
     updateTime();

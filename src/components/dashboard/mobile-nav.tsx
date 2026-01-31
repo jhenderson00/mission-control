@@ -58,7 +58,7 @@ export function MobileNav() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => setIsOpen((open) => !open)}
           aria-label={isOpen ? "Close menu" : "Open menu"}
         >
           {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

@@ -1,21 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { Geist, Geist_Mono, Unbounded } from "next/font/google";
+import { ClerkClientProvider } from "@/components/providers/clerk-provider";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
+const unbounded = Unbounded({
   variable: "--font-display",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -40,9 +44,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} bg-background text-foreground antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${unbounded.variable} bg-background text-foreground antialiased`}
       >
-        <ConvexClientProvider>{children}</ConvexClientProvider>
+        <ClerkClientProvider>
+          <ConvexClientProvider>{children}</ConvexClientProvider>
+        </ClerkClientProvider>
       </body>
     </html>
   );

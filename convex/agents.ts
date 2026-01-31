@@ -17,8 +17,7 @@ export const list = query({
     if (args.status) {
       return await ctx.db
         .query("agents")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .withIndex("by_status", (q: any) => q.eq("status", args.status!))
+        .withIndex("by_status", (q) => q.eq("status", args.status))
         .order("desc")
         .collect();
     }
@@ -45,8 +44,7 @@ export const listWithTasks = query({
     const agents = await ctx.db.query("agents").order("desc").collect();
     
     return Promise.all(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      agents.map(async (agent: any) => {
+      agents.map(async (agent) => {
         const currentTask = agent.currentTaskId
           ? await ctx.db.get(agent.currentTaskId)
           : null;
@@ -73,10 +71,9 @@ export const statusCounts = query({
     };
     
     for (const agent of agents) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const status = (agent as any).status;
-      if (status in counts) {
-        counts[status]++;
+      const status = agent.status;
+      if (typeof status === "string" && status in counts) {
+        counts[status] += 1;
       }
     }
     
@@ -130,8 +127,13 @@ export const updateStatus = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updates: any = {
+    const updates: {
+      status: typeof args.status;
+      updatedAt: number;
+      lastActiveAt: number;
+      startedAt?: number;
+      currentTaskId?: typeof args.currentTaskId;
+    } = {
       status: args.status,
       updatedAt: now,
       lastActiveAt: now,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -165,10 +166,40 @@ interface AgentStatusGridProps {
 }
 
 export function AgentStatusGrid({ agents, className }: AgentStatusGridProps) {
-  const activeAgents = agents.filter((a) => a.status === "active");
-  const idleAgents = agents.filter((a) => a.status === "idle");
-  const blockedAgents = agents.filter((a) => a.status === "blocked");
-  const failedAgents = agents.filter((a) => a.status === "failed");
+  const { activeAgents, idleAgents, blockedAgents, failedAgents, standbyAgents } =
+    useMemo(() => {
+      const active: MockAgent[] = [];
+      const idle: MockAgent[] = [];
+      const blocked: MockAgent[] = [];
+      const failed: MockAgent[] = [];
+
+      for (const agent of agents) {
+        switch (agent.status) {
+          case "active":
+            active.push(agent);
+            break;
+          case "idle":
+            idle.push(agent);
+            break;
+          case "blocked":
+            blocked.push(agent);
+            break;
+          case "failed":
+            failed.push(agent);
+            break;
+          default:
+            break;
+        }
+      }
+
+      return {
+        activeAgents: active,
+        idleAgents: idle,
+        blockedAgents: blocked,
+        failedAgents: failed,
+        standbyAgents: [...blocked, ...failed, ...idle],
+      };
+    }, [agents]);
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -221,7 +252,7 @@ export function AgentStatusGrid({ agents, className }: AgentStatusGridProps) {
             Standby
           </h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[...blockedAgents, ...failedAgents, ...idleAgents].map((agent) => (
+            {standbyAgents.map((agent) => (
               <AgentCard key={agent._id} agent={agent} />
             ))}
           </div>

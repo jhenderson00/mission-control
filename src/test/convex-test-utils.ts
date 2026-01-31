@@ -11,6 +11,12 @@ type Document = {
 type IndexFilter = {
   field: string;
   value: unknown;
+  op: "eq" | "gte";
+};
+
+type IndexQuery = {
+  eq: (field: string, value: unknown) => IndexQuery;
+  gte: (field: string, value: unknown) => IndexQuery;
 };
 
 class QueryBuilder {
@@ -20,14 +26,40 @@ class QueryBuilder {
     this.items = items;
   }
 
-  withIndex(_index: string, callback: (q: { eq: (field: string, value: unknown) => IndexFilter }) => IndexFilter) {
-    const filter = callback({
-      eq: (field, value) => ({ field, value }),
-    });
+  withIndex(_index: string, callback: (q: IndexQuery) => unknown) {
+    const filters: IndexFilter[] = [];
+    const query: IndexQuery = {
+      eq: (field: string, value: unknown) => {
+        filters.push({ field, value, op: "eq" });
+        return query;
+      },
+      gte: (field: string, value: unknown) => {
+        filters.push({ field, value, op: "gte" });
+        return query;
+      },
+    };
 
-    const filtered = filter?.field
-      ? this.items.filter((item) => item[filter.field] === filter.value)
-      : this.items;
+    callback(query);
+
+    const filtered = filters.reduce((items, filter) => {
+      if (filter.op === "eq") {
+        return items.filter((item) => item[filter.field] === filter.value);
+      }
+
+      return items.filter((item) => {
+        const fieldValue = item[filter.field];
+        if (fieldValue === undefined || fieldValue === null) {
+          return false;
+        }
+        if (typeof fieldValue === "number" && typeof filter.value === "number") {
+          return fieldValue >= filter.value;
+        }
+        if (typeof fieldValue === "string" && typeof filter.value === "string") {
+          return fieldValue >= filter.value;
+        }
+        return false;
+      });
+    }, this.items);
 
     return new QueryBuilder(filtered);
   }

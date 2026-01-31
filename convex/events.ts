@@ -12,8 +12,7 @@ export const listByAgent = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("events")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_agent", (q: any) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
       .order("desc")
       .take(args.limit ?? 100);
   },
@@ -30,8 +29,7 @@ export const listByTask = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("events")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_task", (q: any) => q.eq("taskId", args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .order("desc")
       .take(args.limit ?? 100);
   },
@@ -58,8 +56,7 @@ export const listRecent = query({
     if (args.type) {
       return await ctx.db
         .query("events")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .withIndex("by_type", (q: any) => q.eq("type", args.type!))
+        .withIndex("by_type", (q) => q.eq("type", args.type))
         .order("desc")
         .take(args.limit ?? 50);
     }
@@ -79,33 +76,33 @@ export const countsByType = query({
     since: v.optional(v.number()), // timestamp
   },
   handler: async (ctx, args) => {
-    const events = await ctx.db.query("events").collect();
-    
-    const filtered = args.since
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? events.filter((e: any) => e.createdAt >= args.since!)
-      : events;
-    
-    const counts: Record<string, number> = {
-      message: 0,
-      tool_call: 0,
-      tool_result: 0,
-      decision: 0,
-      error: 0,
-      status_change: 0,
-      spawn: 0,
-      complete: 0,
-    };
-    
-    for (const event of filtered) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const type = (event as any).type;
-      if (type in counts) {
-        counts[type]++;
-      }
-    }
-    
-    return counts;
+    const types = [
+      "message",
+      "tool_call",
+      "tool_result",
+      "decision",
+      "error",
+      "status_change",
+      "spawn",
+      "complete",
+    ] as const;
+    const since = args.since;
+
+    const entries = await Promise.all(
+      types.map(async (type) => {
+        const query = ctx.db
+          .query("events")
+          .withIndex("by_type", (q) => q.eq("type", type));
+
+        const events = await query.collect();
+        const total = since
+          ? events.filter((event) => event.createdAt >= since).length
+          : events.length;
+        return [type, total] as const;
+      })
+    );
+
+    return Object.fromEntries(entries) as Record<(typeof types)[number], number>;
   },
 });
 

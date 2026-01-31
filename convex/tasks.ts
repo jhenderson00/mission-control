@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { GenericId } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
 /**
@@ -16,24 +17,18 @@ export const list = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let tasks;
-    
-    if (args.status) {
-      tasks = await ctx.db
-        .query("tasks")
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .withIndex("by_status", (q: any) => q.eq("status", args.status!))
-        .order("desc")
-        .collect();
-    } else {
-      tasks = await ctx.db.query("tasks").order("desc").collect();
-    }
-    
+    const baseQuery = args.status
+      ? ctx.db
+          .query("tasks")
+          .withIndex("by_status", (q) => q.eq("status", args.status))
+          .order("desc")
+      : ctx.db.query("tasks").order("desc");
+
     if (args.limit) {
-      return tasks.slice(0, args.limit);
+      return await baseQuery.take(args.limit);
     }
-    
-    return tasks;
+
+    return await baseQuery.collect();
   },
 });
 
@@ -65,10 +60,9 @@ export const statusCounts = query({
     };
     
     for (const task of tasks) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const status = (task as any).status;
-      if (status in counts) {
-        counts[status]++;
+      const status = task.status;
+      if (typeof status === "string" && status in counts) {
+        counts[status] += 1;
       }
     }
     
@@ -88,13 +82,9 @@ export const listWithAgents = query({
       .take(args.limit ?? 50);
     
     return Promise.all(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tasks.map(async (task: any) => {
-        const agentIds = task.assignedAgentIds ?? [];
-        const agents = await Promise.all(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          agentIds.map((id: any) => ctx.db.get(id))
-        );
+      tasks.map(async (task) => {
+        const agentIds = (task.assignedAgentIds ?? []) as GenericId<"agents">[];
+        const agents = await Promise.all(agentIds.map((id) => ctx.db.get(id)));
         return { ...task, assignedAgents: agents.filter(Boolean) };
       })
     );
@@ -160,8 +150,14 @@ export const updateStatus = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updates: any = {
+    const updates: {
+      status: typeof args.status;
+      updatedAt: number;
+      startedAt?: number;
+      completedAt?: number;
+      blockedReason?: string;
+      output?: unknown;
+    } = {
       status: args.status,
       updatedAt: now,
     };

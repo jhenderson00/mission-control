@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 vi.mock("next/font/google", () => ({
   Geist: () => ({ variable: "--font-geist-sans" }),
   Geist_Mono: () => ({ variable: "--font-geist-mono" }),
-  Space_Grotesk: () => ({ variable: "--font-display" }),
+  Unbounded: () => ({ variable: "--font-display" }),
 }));
 
 import RootLayout, { metadata, viewport } from "@/app/layout";
