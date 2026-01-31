@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { formatDuration } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -59,15 +60,6 @@ const statusConfig: Record<
     bgColor: "bg-red-400/10",
   },
 };
-
-function formatDuration(startedAt?: number): string {
-  if (!startedAt) return "";
-  const diff = Date.now() - startedAt;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}m active`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m active`;
-}
 
 function ProgressBar({ status }: { status: AgentStatus }) {
   // Simulate progress based on status

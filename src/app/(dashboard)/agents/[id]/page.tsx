@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { mockAgents } from "@/lib/mock-data";
+import { formatDuration } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,17 +63,13 @@ const statusStyles: Record<string, string> = {
   failed: "bg-red-500/15 text-red-300",
 };
 
-function formatDuration(startedAt?: number) {
-  if (!startedAt) return "Idle";
-  const diff = Date.now() - startedAt;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}m active`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m active`;
-}
-
-export default function AgentDetailPage({ params }: { params: { id: string } }) {
-  const agent = mockAgents.find((item) => item._id === params.id);
+export default async function AgentDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const agent = mockAgents.find((item) => item._id === id);
 
   if (!agent) {
     notFound();
@@ -108,7 +105,7 @@ export default function AgentDetailPage({ params }: { params: { id: string } }) 
                 {agent.currentTask?.title ?? "No active task assigned."}
               </p>
               <p className="mt-3 text-xs text-muted-foreground">
-                Uptime: {formatDuration(agent.startedAt)}
+                Uptime: {formatDuration(agent.startedAt, "Idle")}
               </p>
             </div>
 
