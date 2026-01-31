@@ -53,7 +53,7 @@ export function MobileNav() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-border/60">
             <Rocket className="h-4 w-4 text-primary" />
           </div>
-          <span className="font-semibold font-display">Cydni</span>
+          <span className="font-semibold font-display">Cydni - Mission Control</span>
         </div>
         <Button
           variant="ghost"
@@ -85,7 +85,7 @@ export function MobileNav() {
             <Rocket className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="font-semibold font-display">Cydni Mission Control</p>
+            <p className="font-semibold font-display">Cydni - Mission Control</p>
             <p className="text-xs text-muted-foreground">AI command center</p>
           </div>
         </div>

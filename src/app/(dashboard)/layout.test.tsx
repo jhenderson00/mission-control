@@ -11,6 +11,6 @@ describe("DashboardLayout", () => {
     );
 
     expect(screen.getByText("Child Content")).toBeInTheDocument();
-    expect(screen.getAllByText("Cydni Mission Control").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cydni - Mission Control").length).toBeGreaterThan(0);
   });
 });
