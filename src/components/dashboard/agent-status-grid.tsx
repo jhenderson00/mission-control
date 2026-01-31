@@ -157,7 +157,7 @@ function AgentCard({ agent }: { agent: MockAgent }) {
               <Clock className="h-3 w-3" />
               <span>{formatDuration(agent.startedAt) || "Idle"}</span>
             </div>
-            <Badge variant="outline" className="text-[10px] h-5">
+            <Badge variant="outline" className="text-[10px] h-5 max-w-[140px] truncate">
               {agent.model}
             </Badge>
           </div>

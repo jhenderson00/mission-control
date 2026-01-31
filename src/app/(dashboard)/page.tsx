@@ -11,221 +11,162 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
-  Users,
-  ListChecks,
-  AlertCircle,
-  GitBranch,
   Activity,
-  Zap,
-  Clock,
-  TrendingUp,
+  Brain,
+  ShieldAlert,
+  Telescope,
 } from "lucide-react";
 
-// Mock metrics for dashboard
-const metrics = [
+const stats = [
   {
     title: "Active Agents",
     value: "3",
-    change: "+2 from idle",
-    icon: Users,
-    color: "text-emerald-400",
+    detail: "12 total registered",
+    icon: Activity,
   },
   {
     title: "Queued Tasks",
-    value: "8",
-    change: "2 high priority",
-    icon: ListChecks,
-    color: "text-blue-400",
+    value: "27",
+    detail: "8 blocked",
+    icon: Telescope,
   },
   {
-    title: "Blocked",
-    value: "1",
-    change: "Needs input",
-    icon: AlertCircle,
-    color: "text-amber-400",
+    title: "Decisions Pending",
+    value: "6",
+    detail: "Awaiting review",
+    icon: Brain,
   },
   {
-    title: "Decisions Today",
-    value: "24",
-    change: "6 pending review",
-    icon: GitBranch,
-    color: "text-violet-400",
+    title: "Critical Alerts",
+    value: "2",
+    detail: "Last 24h",
+    icon: ShieldAlert,
   },
 ];
-
-const recentActivity = [
-  {
-    time: "2m ago",
-    agent: "Claude Code #47",
-    action: "Completed PR review",
-    type: "complete",
-  },
-  {
-    time: "5m ago",
-    agent: "Analyst #12",
-    action: "Started CTO briefing synthesis",
-    type: "start",
-  },
-  {
-    time: "8m ago",
-    agent: "Writer #3",
-    action: "Blocked: waiting for context",
-    type: "blocked",
-  },
-  {
-    time: "12m ago",
-    agent: "Critic #12",
-    action: "Decision: flag security issue",
-    type: "decision",
-  },
-  {
-    time: "15m ago",
-    agent: "Cydni",
-    action: "Spawned Claude Code #47",
-    type: "spawn",
-  },
-];
-
-const activityTypeStyles = {
-  complete: "text-emerald-400",
-  start: "text-blue-400",
-  blocked: "text-amber-400",
-  decision: "text-violet-400",
-  spawn: "text-cyan-400",
-};
 
 export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
         title="Mission Overview"
-        description="Real-time visibility into your AI organization"
+        description="Command the fleet, align missions, and monitor real-time signals."
         badge="Live"
       />
 
-      {/* Metrics grid */}
-      <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => {
+          const Icon = stat.icon;
           return (
-            <Card key={metric.title} className="border-border/40 bg-card/30">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardDescription className="text-xs">
-                    {metric.title}
-                  </CardDescription>
-                  <Icon className={`h-4 w-4 ${metric.color}`} />
+            <Card key={stat.title} className="border-border/60 bg-card/40">
+              <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                <div className="space-y-1">
+                  <CardDescription>{stat.title}</CardDescription>
+                  <CardTitle className="text-3xl font-semibold font-display">
+                    {stat.value}
+                  </CardTitle>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-background/60 text-muted-foreground">
+                  <Icon className="h-4 w-4" />
                 </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold tracking-tight">
-                  {metric.value}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {metric.change}
-                </p>
+              <CardContent className="text-xs text-muted-foreground">
+                {stat.detail}
               </CardContent>
             </Card>
           );
         })}
       </section>
 
-      {/* Agent Status Grid */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Agent Fleet</h2>
-          <Badge variant="outline" className="gap-1">
-            <Activity className="h-3 w-3" />
-            Live
-          </Badge>
-        </div>
-        <AgentStatusGrid agents={mockAgents} />
-      </section>
-
-      {/* Activity feed and stats */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Recent Activity */}
-        <Card className="border-border/40 bg-card/30">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Recent Activity</CardTitle>
-              <Badge variant="secondary" className="text-xs">
-                Last 30 min
-              </Badge>
-            </div>
+      <Card className="border-border/60 bg-card/40">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Agent Status Grid</CardTitle>
             <CardDescription>
-              Real-time feed of agent actions and decisions
+              Live activity across operators, models, and mission focus.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">Clawdbot Fleet</Badge>
+            <Badge variant="secondary">North America</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <AgentStatusGrid agents={mockAgents} />
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <Card className="border-border/60 bg-card/40">
+          <CardHeader>
+            <CardTitle>Mission Pulse</CardTitle>
+            <CardDescription>
+              Highlights from the last 60 minutes of activity.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentActivity.map((activity, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50">
-                    <Zap
-                      className={`h-4 w-4 ${activityTypeStyles[activity.type as keyof typeof activityTypeStyles]}`}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground">{activity.action}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-muted-foreground">
-                        {activity.agent}
-                      </span>
-                      <span className="text-xs text-muted-foreground/60">•</span>
-                      <span className="text-xs text-muted-foreground/60">
-                        {activity.time}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-foreground font-medium">
+                  Context graph sync complete
+                </p>
+                <p>14 new dependencies detected across active tasks.</p>
+              </div>
+              <Badge variant="outline">2m ago</Badge>
+            </div>
+            <Separator />
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-foreground font-medium">
+                  Analyst #12 flagged escalation
+                </p>
+                <p>CTO briefing needs approval on risk language.</p>
+              </div>
+              <Badge variant="outline">7m ago</Badge>
+            </div>
+            <Separator />
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-foreground font-medium">
+                  Telemetry uplink stable
+                </p>
+                <p>Streaming 48k events/hour across mission nodes.</p>
+              </div>
+              <Badge variant="outline">12m ago</Badge>
             </div>
           </CardContent>
         </Card>
 
-        {/* Quick Stats */}
-        <Card className="border-border/40 bg-card/30">
+        <Card className="border-border/60 bg-card/40">
           <CardHeader>
-            <CardTitle className="text-base">Today's Stats</CardTitle>
-            <CardDescription>Performance metrics for the fleet</CardDescription>
+            <CardTitle>Critical Queue</CardTitle>
+            <CardDescription>
+              Decisions and blockers waiting on operator input.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">Avg task time</span>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border/60 bg-background/50 p-4">
+              <p className="text-foreground font-medium">
+                PR #234 security review
+              </p>
+              <p className="mt-1">
+                Claimed SQL injection risk at line 142. Needs approval.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <Badge variant="secondary">Decision</Badge>
+                <Badge variant="outline">High</Badge>
               </div>
-              <span className="text-sm font-medium">8.4 min</span>
             </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">Tasks completed</span>
+            <div className="rounded-xl border border-border/60 bg-background/50 p-4">
+              <p className="text-foreground font-medium">
+                Analyst #12 escalation
+              </p>
+              <p className="mt-1">
+                Awaiting redirection on Q4 support ticket synthesis.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <Badge variant="secondary">Blocked</Badge>
+                <Badge variant="outline">Medium</Badge>
               </div>
-              <span className="text-sm font-medium">12</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">Token usage</span>
-              </div>
-              <span className="text-sm font-medium">84.2k</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <GitBranch className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">Decision accuracy</span>
-              </div>
-              <span className="text-sm font-medium text-emerald-400">96%</span>
-            </div>
-            <Separator />
-            <div className="rounded-lg bg-muted/30 p-3 text-center">
-              <p className="text-xs text-muted-foreground">Estimated cost today</p>
-              <p className="text-lg font-semibold mt-1">$2.47</p>
             </div>
           </CardContent>
         </Card>
