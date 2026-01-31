@@ -63,12 +63,12 @@ const statusStyles: Record<string, string> = {
   failed: "bg-red-500/15 text-red-300",
 };
 
-export default async function AgentDetailPage({
+export default function AgentDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }) {
-  const { id } = await params;
+  const { id } = params;
   const agent = mockAgents.find((item) => item._id === id);
 
   if (!agent) {
