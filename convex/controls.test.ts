@@ -424,4 +424,162 @@ describe("controls", () => {
       })
     ).rejects.toThrow("Unauthorized");
   });
+
+  it("lists active operations by agent", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "op_active_1",
+      requestId: "req_a1",
+      agentId: "agent_1",
+      command: "agent.pause",
+      status: "queued",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "op_active_2",
+      requestId: "req_a2",
+      agentId: "agent_1",
+      command: "agent.pause",
+      status: "sent",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "op_active_3",
+      requestId: "req_a3",
+      agentId: "agent_1",
+      command: "agent.pause",
+      status: "acked",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "op_failed",
+      requestId: "req_a4",
+      agentId: "agent_1",
+      command: "agent.pause",
+      status: "failed",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+
+    const result = await controls.listActiveByAgent._handler(ctx, {
+      agentId: "agent_1",
+    });
+
+    const statuses = result.map((entry) => entry.status);
+    expect(statuses).toContain("queued");
+    expect(statuses).toContain("sent");
+    expect(statuses).toContain("acked");
+    expect(statuses).not.toContain("failed");
+  });
+
+  it("lists recent operations by operator", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "op_user_1",
+      requestId: "req_user_1",
+      agentId: "agent_1",
+      command: "agent.pause",
+      status: "queued",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "op_user_2",
+      requestId: "req_user_2",
+      agentId: "agent_2",
+      command: "agent.pause",
+      status: "queued",
+      requestedBy: "user_2",
+      requestedAt: Date.now(),
+    });
+
+    const result = await controls.listRecentByOperator._handler(ctx, {
+      requestedBy: "user_1",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.operationId).toBe("op_user_1");
+  });
+
+  it("lists operations by bulk id", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "bulk_op_1",
+      requestId: "bulk_req",
+      bulkId: "bulk_req",
+      agentId: "agent_1",
+      command: "agent.pause",
+      status: "queued",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+    await ctx.db.insert("agentControlOperations", {
+      operationId: "bulk_op_2",
+      requestId: "bulk_req",
+      bulkId: "bulk_req",
+      agentId: "agent_2",
+      command: "agent.pause",
+      status: "queued",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+
+    const result = await controls.listByBulkId._handler(ctx, {
+      bulkId: "bulk_req",
+    });
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("lists audits by agent", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentControlAudits", {
+      operationId: "audit_op_1",
+      requestId: "audit_req_1",
+      agentId: "agent_1",
+      command: "agent.pause",
+      outcome: "accepted",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+
+    const result = await controls.listAuditsByAgent._handler(ctx, {
+      agentId: "agent_1",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.operationId).toBe("audit_op_1");
+  });
+
+  it("filters recent audits", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentControlAudits", {
+      operationId: "audit_op_2",
+      requestId: "audit_req_2",
+      agentId: "agent_1",
+      command: "agent.pause",
+      outcome: "accepted",
+      requestedBy: "user_1",
+      requestedAt: Date.now(),
+    });
+    await ctx.db.insert("agentControlAudits", {
+      operationId: "audit_op_3",
+      requestId: "audit_req_3",
+      agentId: "agent_2",
+      command: "agent.pause",
+      outcome: "rejected",
+      requestedBy: "user_2",
+      requestedAt: Date.now(),
+    });
+
+    const result = await controls.listAuditsRecent._handler(ctx, {
+      outcome: "rejected",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.operationId).toBe("audit_op_3");
+  });
 });

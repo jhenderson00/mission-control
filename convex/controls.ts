@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import { v } from "convex/values";
 import { z } from "zod";
-import type { Id } from "./_generated/dataModel";
-import { action, internalMutation } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { action, internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 type OperationStatus = "queued" | "sent" | "acked" | "failed" | "timed-out";
@@ -24,6 +24,8 @@ type BulkDispatchResult = {
   bridgeStatus?: "accepted" | "rejected" | "error";
   error?: string;
 };
+
+const activeStatuses = ["queued", "sent", "acked"] as const;
 
 const prioritySchema = z.enum(["low", "medium", "high", "critical"]);
 
@@ -651,5 +653,97 @@ export const bulkDispatch = action({
           ? undefined
           : bridgeAck.error ?? "Bridge rejected request",
     };
+  },
+});
+
+export const listActiveByAgent = query({
+  args: {
+    agentId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), activeStatuses[0]),
+          q.eq(q.field("status"), activeStatuses[1]),
+          q.eq(q.field("status"), activeStatuses[2])
+        )
+      )
+      .order("desc")
+      .take(args.limit ?? 50);
+  },
+});
+
+export const listRecentByOperator = query({
+  args: {
+    requestedBy: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_requested_by", (q) => q.eq("requestedBy", args.requestedBy))
+      .order("desc")
+      .take(args.limit ?? 50);
+  },
+});
+
+export const listByBulkId = query({
+  args: {
+    bulkId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_bulk", (q) => q.eq("bulkId", args.bulkId))
+      .order("desc")
+      .take(args.limit ?? 100);
+  },
+});
+
+const auditOutcomeValidator = v.union(
+  v.literal("accepted"),
+  v.literal("rejected"),
+  v.literal("error")
+);
+
+export const listAuditsByAgent = query({
+  args: {
+    agentId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
+    return await ctx.db
+      .query("agentControlAudits")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .order("desc")
+      .take(args.limit ?? 50);
+  },
+});
+
+export const listAuditsRecent = query({
+  args: {
+    limit: v.optional(v.number()),
+    requestedBy: v.optional(v.string()),
+    outcome: v.optional(auditOutcomeValidator),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
+    const baseQuery = args.requestedBy
+      ? ctx.db
+          .query("agentControlAudits")
+          .withIndex("by_requested_by", (q) =>
+            q.eq("requestedBy", args.requestedBy as string)
+          )
+      : ctx.db.query("agentControlAudits");
+
+    const filtered = args.outcome
+      ? baseQuery.filter((q) => q.eq(q.field("outcome"), args.outcome))
+      : baseQuery;
+
+    return await filtered.order("desc").take(args.limit ?? 50);
   },
 });
