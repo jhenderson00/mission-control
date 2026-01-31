@@ -1,6 +1,13 @@
 import { vi } from "vitest";
 
-type TableName = "agents" | "tasks" | "events" | "decisions";
+type TableName =
+  | "agents"
+  | "tasks"
+  | "events"
+  | "decisions"
+  | "agentStatus"
+  | "messages"
+  | "agentControlOperations";
 
 type Document = {
   _id: string;
@@ -17,6 +24,78 @@ type IndexFilter = {
 type IndexQuery = {
   eq: (field: string, value: unknown) => IndexQuery;
   gte: (field: string, value: unknown) => IndexQuery;
+};
+
+type Expression<T> = (doc: Document) => T;
+
+type FilterBuilder = {
+  eq: <T>(l: Expression<T> | T, r: Expression<T> | T) => Expression<boolean>;
+  neq: <T>(l: Expression<T> | T, r: Expression<T> | T) => Expression<boolean>;
+  lt: <T>(l: Expression<T> | T, r: Expression<T> | T) => Expression<boolean>;
+  lte: <T>(l: Expression<T> | T, r: Expression<T> | T) => Expression<boolean>;
+  gt: <T>(l: Expression<T> | T, r: Expression<T> | T) => Expression<boolean>;
+  gte: <T>(l: Expression<T> | T, r: Expression<T> | T) => Expression<boolean>;
+  and: (...exprs: Array<Expression<boolean> | boolean>) => Expression<boolean>;
+  or: (...exprs: Array<Expression<boolean> | boolean>) => Expression<boolean>;
+  not: (expr: Expression<boolean> | boolean) => Expression<boolean>;
+  field: (fieldPath: string) => Expression<unknown>;
+};
+
+function asExpression<T>(value: Expression<T> | T): Expression<T> {
+  if (typeof value === "function") {
+    return value as Expression<T>;
+  }
+  return () => value as T;
+}
+
+function getFieldValue(doc: Document, fieldPath: string): unknown {
+  return fieldPath.split(".").reduce<unknown>((value, key) => {
+    if (value && typeof value === "object" && key in (value as Record<string, unknown>)) {
+      return (value as Record<string, unknown>)[key];
+    }
+    return undefined;
+  }, doc);
+}
+
+function isEqualValue(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) return false;
+    return left.every((value, index) => isEqualValue(value, right[index]));
+  }
+
+  if (
+    left &&
+    right &&
+    typeof left === "object" &&
+    typeof right === "object" &&
+    !Array.isArray(left) &&
+    !Array.isArray(right)
+  ) {
+    const leftKeys = Object.keys(left as Record<string, unknown>);
+    const rightKeys = Object.keys(right as Record<string, unknown>);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key) =>
+      isEqualValue(
+        (left as Record<string, unknown>)[key],
+        (right as Record<string, unknown>)[key]
+      )
+    );
+  }
+
+  return left === right;
+}
+
+const filterBuilder: FilterBuilder = {
+  eq: (l, r) => (doc) => asExpression(l)(doc) === asExpression(r)(doc),
+  neq: (l, r) => (doc) => asExpression(l)(doc) !== asExpression(r)(doc),
+  lt: (l, r) => (doc) => (asExpression(l)(doc) as never) < (asExpression(r)(doc) as never),
+  lte: (l, r) => (doc) => (asExpression(l)(doc) as never) <= (asExpression(r)(doc) as never),
+  gt: (l, r) => (doc) => (asExpression(l)(doc) as never) > (asExpression(r)(doc) as never),
+  gte: (l, r) => (doc) => (asExpression(l)(doc) as never) >= (asExpression(r)(doc) as never),
+  and: (...exprs) => (doc) => exprs.every((expr) => asExpression(expr)(doc)),
+  or: (...exprs) => (doc) => exprs.some((expr) => asExpression(expr)(doc)),
+  not: (expr) => (doc) => !asExpression(expr)(doc),
+  field: (fieldPath) => (doc) => getFieldValue(doc, fieldPath),
 };
 
 class QueryBuilder {
@@ -43,7 +122,7 @@ class QueryBuilder {
 
     const filtered = filters.reduce((items, filter) => {
       if (filter.op === "eq") {
-        return items.filter((item) => item[filter.field] === filter.value);
+        return items.filter((item) => isEqualValue(item[filter.field], filter.value));
       }
 
       return items.filter((item) => {
@@ -62,6 +141,12 @@ class QueryBuilder {
     }, this.items);
 
     return new QueryBuilder(filtered);
+  }
+
+  filter(predicate: (q: FilterBuilder) => Expression<boolean> | boolean) {
+    const expr = predicate(filterBuilder);
+    const evaluator = asExpression(expr);
+    return new QueryBuilder(this.items.filter((item) => evaluator(item)));
   }
 
   order(direction: "asc" | "desc") {
@@ -88,6 +173,9 @@ class InMemoryDB {
     tasks: [],
     events: [],
     decisions: [],
+    agentStatus: [],
+    messages: [],
+    agentControlOperations: [],
   };
 
   query(table: TableName) {

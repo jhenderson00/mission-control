@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  ConnectionBadge,
+  ConnectionBanner,
+} from "@/components/dashboard/connection-badge";
 
 type PageHeaderProps = {
   title: string;
   description: string;
   badge?: string;
+  titleAccessory?: ReactNode;
 };
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -39,7 +45,12 @@ function LiveClock() {
   );
 }
 
-export function PageHeader({ title, description, badge }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  badge,
+  titleAccessory,
+}: PageHeaderProps): React.ReactElement {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -66,10 +77,12 @@ export function PageHeader({ title, description, badge }: PageHeaderProps) {
                 {badge}
               </Badge>
             )}
+            {titleAccessory}
           </div>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="flex items-center gap-3">
+          <ConnectionBadge className="shrink-0" />
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             <span>Systems nominal</span>
@@ -78,6 +91,7 @@ export function PageHeader({ title, description, badge }: PageHeaderProps) {
           <LiveClock />
         </div>
       </div>
+      <ConnectionBanner />
       <Separator />
     </div>
   );

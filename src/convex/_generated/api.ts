@@ -12,6 +12,7 @@ export const api = {
     get: makeFunctionReference<"query">("agents:get"),
     listWithTasks: makeFunctionReference<"query">("agents:listWithTasks"),
     statusCounts: makeFunctionReference<"query">("agents:statusCounts"),
+    listStatus: makeFunctionReference<"query">("agents:listStatus"),
     create: makeFunctionReference<"mutation">("agents:create"),
     updateStatus: makeFunctionReference<"mutation">("agents:updateStatus"),
     remove: makeFunctionReference<"mutation">("agents:remove"),
@@ -27,10 +28,11 @@ export const api = {
   },
   events: {
     listByAgent: makeFunctionReference<"query">("events:listByAgent"),
-    listByTask: makeFunctionReference<"query">("events:listByTask"),
     listRecent: makeFunctionReference<"query">("events:listRecent"),
     countsByType: makeFunctionReference<"query">("events:countsByType"),
-    log: makeFunctionReference<"mutation">("events:log"),
+  },
+  conversations: {
+    listBySession: makeFunctionReference<"query">("conversations:listBySession"),
   },
   decisions: {
     listByAgent: makeFunctionReference<"query">("decisions:listByAgent"),

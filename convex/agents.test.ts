@@ -162,4 +162,46 @@ describe("agents functions", () => {
     const removed = await ctx.db.get(id);
     expect(removed).toBeNull();
   });
+
+  it("updates status from presence entries", async () => {
+    const ctx = createMockCtx();
+    await agents.updateStatusFromEvent._handler(ctx, {
+      eventId: "evt_presence",
+      eventType: "presence",
+      agentId: "agent_primary",
+      sessionKey: "session_presence",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: {
+        entries: [
+          {
+            deviceId: "agent_alpha",
+            lastSeen: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+
+    const statuses = await ctx.db.query("agentStatus").collect();
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0].agentId).toBe("agent_alpha");
+    expect(statuses[0].status).toBe("online");
+  });
+
+  it("updates status from heartbeat events", async () => {
+    const ctx = createMockCtx();
+    await agents.updateStatusFromEvent._handler(ctx, {
+      eventId: "evt_heartbeat",
+      eventType: "heartbeat",
+      agentId: "agent_heartbeat",
+      sessionKey: "session_heartbeat",
+      timestamp: new Date().toISOString(),
+      sequence: 2,
+      payload: { status: "ok" },
+    });
+
+    const statuses = await ctx.db.query("agentStatus").collect();
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0].agentId).toBe("agent_heartbeat");
+  });
 });

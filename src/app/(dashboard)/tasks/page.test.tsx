@@ -5,6 +5,10 @@ import TasksPage from "@/app/(dashboard)/tasks/page";
 
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
+  useConvexConnectionState: () => ({
+    isWebSocketConnected: true,
+    hasEverConnected: true,
+  }),
 }));
 
 const useQueryMock = vi.mocked(useQuery);

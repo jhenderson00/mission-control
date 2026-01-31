@@ -30,6 +30,10 @@ if (!globalThis.matchMedia) {
   })) as typeof window.matchMedia;
 }
 
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 const mockUsePathname = vi.fn(() => "/");
 const mockNotFound = vi.fn(() => {
   throw new Error("NEXT_NOT_FOUND");
@@ -51,6 +55,7 @@ vi.mock("@/convex/_generated/api", () => ({
       statusCounts: "agents.statusCounts",
       listWithTasks: "agents.listWithTasks",
       get: "agents.get",
+      listStatus: "agents.listStatus",
     },
     tasks: {
       statusCounts: "tasks.statusCounts",
@@ -66,6 +71,9 @@ vi.mock("@/convex/_generated/api", () => ({
       countsByType: "events.countsByType",
       listRecent: "events.listRecent",
       listByAgent: "events.listByAgent",
+    },
+    conversations: {
+      listBySession: "conversations.listBySession",
     },
   },
 }));

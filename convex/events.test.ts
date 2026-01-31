@@ -12,93 +12,137 @@ describe("events functions", () => {
     vi.useRealTimers();
   });
 
-  it("lists events by agent and task", async () => {
+  it("lists events by agent", async () => {
     const ctx = createMockCtx();
-    const agentId = await ctx.db.insert("agents", {
-      name: "Agent",
-      status: "active",
-      type: "executor",
-      model: "m1",
-      host: "local",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    const taskId = await ctx.db.insert("tasks", {
-      title: "Task",
-      status: "active",
-      requester: "system",
-      priority: "high",
-      assignedAgentIds: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
+    const agentId = "agent_1";
     await ctx.db.insert("events", {
+      eventId: "evt_1",
+      eventType: "agent",
       agentId,
-      taskId,
-      type: "message",
-      content: "Hello",
-      createdAt: Date.now(),
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { delta: { content: "Hello" } },
+      receivedAt: Date.now(),
     });
 
-    const byAgent = await events.listByAgent._handler(ctx, { agentId: agentId as never });
-    const byTask = await events.listByTask._handler(ctx, { taskId: taskId as never });
+    const byAgent = await events.listByAgent._handler(ctx, { agentId });
 
     expect(byAgent).toHaveLength(1);
-    expect(byTask).toHaveLength(1);
+    expect(byAgent[0].content).toContain("Hello");
   });
 
   it("lists recent events with optional type filter", async () => {
     const ctx = createMockCtx();
     await ctx.db.insert("events", {
+      eventId: "evt_1",
+      eventType: "heartbeat",
       agentId: "agent_1",
-      type: "error",
-      content: "Oops",
-      createdAt: Date.now(),
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { status: "ok" },
+      receivedAt: Date.now(),
     });
     await ctx.db.insert("events", {
+      eventId: "evt_2",
+      eventType: "agent",
       agentId: "agent_2",
-      type: "message",
-      content: "Hi",
-      createdAt: Date.now(),
+      sessionKey: "session_2",
+      timestamp: new Date().toISOString(),
+      sequence: 2,
+      payload: { delta: { content: "Hi" } },
+      receivedAt: Date.now(),
     });
 
     const all = await events.listRecent._handler(ctx, { limit: 10 });
-    const filtered = await events.listRecent._handler(ctx, { type: "error" });
+    const filtered = await events.listRecent._handler(ctx, { type: "heartbeat" });
 
     expect(all).toHaveLength(2);
     expect(filtered).toHaveLength(1);
-    expect(filtered[0].type).toBe("error");
+    expect(filtered[0].type).toBe("heartbeat");
   });
 
   it("counts events by type with since filter", async () => {
     const ctx = createMockCtx();
     await ctx.db.insert("events", {
+      eventId: "evt_1",
+      eventType: "agent",
       agentId: "agent_1",
-      type: "message",
-      content: "One",
-      createdAt: Date.now() - 1000,
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { delta: { content: "One" } },
+      receivedAt: Date.now() - 1000,
     });
     await ctx.db.insert("events", {
+      eventId: "evt_2",
+      eventType: "agent",
       agentId: "agent_1",
-      type: "message",
-      content: "Two",
-      createdAt: Date.now(),
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 2,
+      payload: { delta: { content: "Two" } },
+      receivedAt: Date.now(),
     });
 
     const counts = await events.countsByType._handler(ctx, { since: Date.now() - 500 });
-    expect(counts.message).toBe(1);
+    expect(counts.agent).toBe(1);
   });
 
-  it("logs a new event", async () => {
+  it("summarizes payload shapes into content", async () => {
     const ctx = createMockCtx();
-    const id = await events.log._handler(ctx, {
-      agentId: "agent_1" as never,
-      type: "status_change",
-      content: "Updated",
+    await ctx.db.insert("events", {
+      eventId: "evt_str",
+      eventType: "chat",
+      agentId: "agent_1",
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: "Raw string payload",
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_content",
+      eventType: "agent",
+      agentId: "agent_2",
+      sessionKey: "session_2",
+      timestamp: new Date().toISOString(),
+      sequence: 2,
+      payload: { content: "Object content" },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_delta",
+      eventType: "agent",
+      agentId: "agent_3",
+      sessionKey: "session_3",
+      timestamp: new Date().toISOString(),
+      sequence: 3,
+      payload: { delta: { content: "Delta content" } },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_status",
+      eventType: "heartbeat",
+      agentId: "agent_4",
+      sessionKey: "session_4",
+      timestamp: "invalid",
+      sequence: 4,
+      payload: { status: "ok" },
+      receivedAt: Date.now(),
     });
 
-    const created = await ctx.db.get(id);
-    expect(created?.type).toBe("status_change");
+    const recent = await events.listRecent._handler(ctx, { limit: 10 });
+    const contents = recent.map((event) => event.content);
+
+    expect(contents).toEqual(
+      expect.arrayContaining([
+        "Raw string payload",
+        "Object content",
+        "Delta content",
+        "ok",
+      ])
+    );
   });
 });

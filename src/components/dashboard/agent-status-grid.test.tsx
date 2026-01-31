@@ -3,6 +3,14 @@ import { render, screen } from "@testing-library/react";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
 import type { AgentSummary } from "@/lib/agent-types";
 
+vi.mock("@/lib/realtime", () => ({
+  useAgentStatus: () => ({
+    statusByAgent: new Map(),
+    statuses: [],
+    isLoading: false,
+  }),
+}));
+
 describe("AgentStatusGrid", () => {
   beforeEach(() => {
     vi.useFakeTimers();

@@ -18,10 +18,13 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     const baseQuery = args.status
-      ? ctx.db
-          .query("tasks")
-          .withIndex("by_status", (q) => q.eq("status", args.status))
-          .order("desc")
+      ? (() => {
+          const status = args.status;
+          return ctx.db
+            .query("tasks")
+            .withIndex("by_status", (q) => q.eq("status", status))
+            .order("desc");
+        })()
       : ctx.db.query("tasks").order("desc");
 
     if (args.limit) {
