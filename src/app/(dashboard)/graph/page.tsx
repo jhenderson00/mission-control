@@ -12,8 +12,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
-
 const fallbackNodes = [
   { id: "node_1", label: "Josh Request", type: "origin" },
   { id: "node_2", label: "Cydni Plan", type: "decision" },
@@ -23,18 +21,31 @@ const fallbackNodes = [
   { id: "node_6", label: "Final Output", type: "outcome" },
 ];
 
+type GraphNode = {
+  id: string;
+  label: string;
+  type: string;
+};
+
+type DecisionNodeSource = {
+  _id?: string;
+  decision: string;
+  outcome: string;
+};
+
 export default function GraphPage() {
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const decisions = useQuery(api.decisions.listRecent, { limit: 12 });
 
   const isLoading = hasConvex && decisions === undefined;
 
-  const nodes = !hasConvex
+  const nodes: GraphNode[] = !hasConvex
     ? fallbackNodes
-    : decisions?.map((decision) => ({
+    : (decisions ?? []).map((decision: DecisionNodeSource) => ({
         id: decision._id ?? decision.decision,
         label: decision.decision,
         type: decision.outcome,
-      })) ?? [];
+      }));
 
   return (
     <div className="space-y-8">

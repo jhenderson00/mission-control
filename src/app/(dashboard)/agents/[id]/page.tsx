@@ -24,8 +24,6 @@ import {
   Siren,
 } from "lucide-react";
 
-const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
-
 const fallbackEvents = [
   {
     id: "event_1",
@@ -69,11 +67,28 @@ const statusStyles: Record<string, string> = {
   failed: "bg-red-500/15 text-red-300",
 };
 
+type EventItem = {
+  id?: string;
+  _id?: string;
+  type: string;
+  content: string;
+  createdAt?: number;
+};
+
+type DecisionItem = {
+  id?: string;
+  _id?: string;
+  decision: string;
+  confidence?: number;
+  outcome: string;
+};
+
 export default function AgentDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const agentId = params.id as Id<"agents">;
 
   const agent = useQuery(api.agents.get, { id: agentId });
@@ -93,10 +108,12 @@ export default function AgentDetailPage({
   const agentData = hasConvex ? agent : fallbackAgent;
 
   const isLoadingEvents = hasConvex && events === undefined;
-  const eventList = hasConvex ? events ?? [] : fallbackEvents;
+  const eventList: EventItem[] = hasConvex ? events ?? [] : fallbackEvents;
 
   const isLoadingDecisions = hasConvex && decisions === undefined;
-  const decisionList = hasConvex ? decisions ?? [] : fallbackDecisions;
+  const decisionList: DecisionItem[] = hasConvex
+    ? decisions ?? []
+    : fallbackDecisions;
 
   if (isLoadingAgent) {
     return (

@@ -45,6 +45,31 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...props }, children),
 }));
 
+vi.mock("@/convex/_generated/api", () => ({
+  api: {
+    agents: {
+      statusCounts: "agents.statusCounts",
+      listWithTasks: "agents.listWithTasks",
+      get: "agents.get",
+    },
+    tasks: {
+      statusCounts: "tasks.statusCounts",
+      listWithAgents: "tasks.listWithAgents",
+      get: "tasks.get",
+    },
+    decisions: {
+      pendingCount: "decisions.pendingCount",
+      listRecent: "decisions.listRecent",
+      listByAgent: "decisions.listByAgent",
+    },
+    events: {
+      countsByType: "events.countsByType",
+      listRecent: "events.listRecent",
+      listByAgent: "events.listByAgent",
+    },
+  },
+}));
+
 (globalThis as typeof globalThis & { __setMockPathname?: (path: string) => void }).__setMockPathname = (
   path: string
 ) => {

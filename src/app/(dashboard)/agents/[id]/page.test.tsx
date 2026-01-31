@@ -1,17 +1,51 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { useQuery } from "convex/react";
 import AgentDetailPage from "@/app/(dashboard)/agents/[id]/page";
 
+vi.mock("convex/react", () => ({
+  useQuery: vi.fn(),
+}));
+
+const useQueryMock = vi.mocked(useQuery);
+const originalEnv = process.env.NEXT_PUBLIC_CONVEX_URL;
+
 describe("AgentDetailPage", () => {
+  afterEach(() => {
+    useQueryMock.mockReset();
+    process.env.NEXT_PUBLIC_CONVEX_URL = originalEnv;
+  });
+
   it("renders details for a known agent", () => {
+    process.env.NEXT_PUBLIC_CONVEX_URL = "";
     render(<AgentDetailPage params={{ id: "agent_1" }} />);
     expect(screen.getByText("Agent Overview")).toBeInTheDocument();
     expect(screen.getByText("Decision Log")).toBeInTheDocument();
   });
 
-  it("throws notFound for unknown agent", () => {
-    expect(() => render(<AgentDetailPage params={{ id: "missing" }} />)).toThrow(
-      "NEXT_NOT_FOUND"
-    );
+  it("renders fallback details for an unknown agent", () => {
+    process.env.NEXT_PUBLIC_CONVEX_URL = "";
+    render(<AgentDetailPage params={{ id: "missing" }} />);
+    expect(screen.getByText("Agent Overview")).toBeInTheDocument();
+  });
+
+  it("shows loading state when Convex is pending", () => {
+    process.env.NEXT_PUBLIC_CONVEX_URL = "https://example.convex.cloud";
+    useQueryMock.mockReturnValue(undefined);
+
+    render(<AgentDetailPage params={{ id: "agent_1" }} />);
+    expect(screen.getByText("Loading agent telemetry...")).toBeInTheDocument();
+  });
+
+  it("shows not found when Convex has no agent", () => {
+    process.env.NEXT_PUBLIC_CONVEX_URL = "https://example.convex.cloud";
+    useQueryMock
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce([])
+      .mockReturnValueOnce(null);
+
+    render(<AgentDetailPage params={{ id: "missing" }} />);
+    expect(screen.getByText("Agent not found")).toBeInTheDocument();
   });
 });

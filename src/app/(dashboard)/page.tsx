@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -24,8 +23,6 @@ import {
   Telescope,
 } from "lucide-react";
 
-const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
-
 const fallbackStats = {
   activeAgents: 3,
   totalAgents: 12,
@@ -35,7 +32,7 @@ const fallbackStats = {
   alertCount: 2,
 };
 
-const fallbackPulse = [
+const fallbackPulse: MissionPulseItem[] = [
   {
     id: "pulse_1",
     title: "Context graph sync complete",
@@ -56,7 +53,7 @@ const fallbackPulse = [
   },
 ];
 
-const fallbackCritical = [
+const fallbackCritical: CriticalQueueItem[] = [
   {
     id: "critical_1",
     title: "PR #234 security review",
@@ -83,14 +80,44 @@ function getAgentCounts(agents: AgentSummary[]) {
 }
 
 const fallbackAgentCounts = getAgentCounts(mockAgents);
+const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+type PulseEvent = {
+  _id?: string;
+  createdAt?: number;
+  type: string;
+  content: string;
+};
+
+type QueueDecision = {
+  _id?: string;
+  createdAt?: number;
+  decision: string;
+  reasoning: string;
+};
+
+type MissionPulseItem = {
+  id: string | number;
+  title: string;
+  detail: string;
+  timeLabel: string;
+};
+
+type CriticalQueueItem = {
+  id: string | number;
+  title: string;
+  detail: string;
+  tags: string[];
+};
 
 export default function DashboardPage() {
-  const since = useMemo(() => Date.now() - 24 * 60 * 60 * 1000, []);
-
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const agentCounts = useQuery(api.agents.statusCounts, {});
   const taskCounts = useQuery(api.tasks.statusCounts, {});
   const pendingCount = useQuery(api.decisions.pendingCount, {});
-  const alertCounts = useQuery(api.events.countsByType, { since });
+  const alertCounts = useQuery(api.events.countsByType, {
+    since: twentyFourHoursAgo,
+  });
 
   const agents = useQuery(api.agents.listWithTasks, {});
   const recentEvents = useQuery(api.events.listRecent, { limit: 3 });
@@ -146,25 +173,25 @@ export default function DashboardPage() {
   ];
 
   const isAgentsLoading = hasConvex && agents === undefined;
-  const agentGridData = hasConvex ? agents ?? [] : mockAgents;
+  const agentGridData: AgentSummary[] = hasConvex ? agents ?? [] : mockAgents;
 
-  const missionPulse = !hasConvex
+  const missionPulse: MissionPulseItem[] = !hasConvex
     ? fallbackPulse
-    : recentEvents?.map((event) => ({
+    : (recentEvents ?? []).map((event: PulseEvent) => ({
         id: event._id ?? event.createdAt ?? event.type,
         title: event.type.replace("_", " "),
         detail: event.content,
         timeLabel: formatRelativeTime(event.createdAt, "just now"),
-      })) ?? [];
+      }));
 
-  const criticalQueue = !hasConvex
+  const criticalQueue: CriticalQueueItem[] = !hasConvex
     ? fallbackCritical
-    : pendingDecisions?.map((decision) => ({
+    : (pendingDecisions ?? []).map((decision: QueueDecision) => ({
         id: decision._id ?? decision.createdAt ?? decision.decision,
         title: decision.decision,
         detail: decision.reasoning,
         tags: ["Decision", "Pending"],
-      })) ?? [];
+      }));
 
   const isMissionPulseLoading = hasConvex && recentEvents === undefined;
   const isCriticalQueueLoading = hasConvex && pendingDecisions === undefined;

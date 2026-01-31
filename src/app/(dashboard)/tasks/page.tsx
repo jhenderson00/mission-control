@@ -13,8 +13,6 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
-const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
-
 const fallbackTasks = [
   {
     id: "task_1",
@@ -58,14 +56,35 @@ const statusBadge: Record<string, "secondary" | "outline"> = {
   failed: "outline",
 };
 
+type TaskListItem = {
+  id: string;
+  title: string;
+  owner: string;
+  status: string;
+  priority: string;
+  detail: string;
+};
+
+type TaskSource = {
+  _id?: string;
+  title: string;
+  assignedAgents?: Array<{ name?: string }>;
+  requester?: string;
+  status: string;
+  priority: string;
+  description?: string;
+  blockedReason?: string;
+};
+
 export default function TasksPage() {
+  const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const tasks = useQuery(api.tasks.listWithAgents, { limit: 12 });
 
   const isLoading = hasConvex && tasks === undefined;
 
-  const taskList = !hasConvex
+  const taskList: TaskListItem[] = !hasConvex
     ? fallbackTasks
-    : tasks?.map((task) => ({
+    : (tasks ?? []).map((task: TaskSource) => ({
         id: task._id ?? task.title,
         title: task.title,
         owner: task.assignedAgents?.[0]?.name ?? task.requester ?? "Unassigned",
@@ -73,7 +92,7 @@ export default function TasksPage() {
         priority: task.priority,
         detail:
           task.description ?? task.blockedReason ?? "No details provided yet.",
-      })) ?? [];
+      }));
 
   return (
     <div className="space-y-8">
