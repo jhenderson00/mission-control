@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-type TableName = "agents" | "tasks" | "events" | "decisions";
+type TableName = "agents" | "tasks" | "events" | "decisions" | "agentStatus" | "messages";
 
 type Document = {
   _id: string;
@@ -88,6 +88,8 @@ class InMemoryDB {
     tasks: [],
     events: [],
     decisions: [],
+    agentStatus: [],
+    messages: [],
   };
 
   query(table: TableName) {

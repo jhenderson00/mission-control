@@ -105,48 +105,56 @@ export default defineSchema({
     .index("by_parent", ["parentTaskId"]),
 
   /**
-   * Event - For event sourcing / agent activity log
+   * Events - Raw events from Gateway (immutable log)
    */
   events: defineTable({
-    // Context
-    agentId: v.id("agents"),
-    taskId: v.optional(v.id("tasks")),
-    
-    // Event type
-    type: v.union(
-      v.literal("message"),
-      v.literal("tool_call"),
-      v.literal("tool_result"),
-      v.literal("decision"),
-      v.literal("error"),
-      v.literal("status_change"),
-      v.literal("spawn"),
-      v.literal("complete")
-    ),
-    
-    // For messages
-    role: v.optional(v.union(
-      v.literal("system"),
-      v.literal("user"),
-      v.literal("assistant")
-    )),
-    
-    // Content
-    content: v.string(),
-    metadata: v.optional(v.object({
-      tokens: v.optional(v.number()),
-      latencyMs: v.optional(v.number()),
-      model: v.optional(v.string()),
-      toolName: v.optional(v.string()),
-      exitCode: v.optional(v.number()),
-    })),
-    
-    // Timestamp
-    createdAt: v.number(),
+    eventId: v.string(),
+    eventType: v.string(),
+    agentId: v.string(),
+    sessionKey: v.optional(v.string()),
+    timestamp: v.string(),
+    sequence: v.number(),
+    payload: v.any(),
+    receivedAt: v.number(), // Convex server time
   })
-    .index("by_agent", ["agentId", "createdAt"])
-    .index("by_task", ["taskId", "createdAt"])
-    .index("by_type", ["type", "createdAt"]),
+    .index("by_agent", ["agentId", "timestamp"])
+    .index("by_session", ["sessionKey", "sequence"])
+    .index("by_type", ["eventType", "timestamp"])
+    .index("by_event_id", ["eventId"]),
+
+  /**
+   * AgentStatus - Materialized agent presence/health state
+   */
+  agentStatus: defineTable({
+    agentId: v.string(),
+    status: v.union(
+      v.literal("online"),
+      v.literal("degraded"),
+      v.literal("offline")
+    ),
+    lastHeartbeat: v.number(),
+    lastActivity: v.number(),
+    currentSession: v.optional(v.string()),
+  })
+    .index("by_agent", ["agentId"]),
+
+  /**
+   * Messages - Conversation messages (denormalized for fast queries)
+   */
+  messages: defineTable({
+    sessionKey: v.string(),
+    agentId: v.string(),
+    role: v.union(
+      v.literal("user"),
+      v.literal("assistant"),
+      v.literal("system")
+    ),
+    content: v.string(),
+    isStreaming: v.boolean(),
+    timestamp: v.number(),
+    sequence: v.number(),
+  })
+    .index("by_session", ["sessionKey", "sequence"]),
 
   /**
    * Decision - Context graph nodes for traceable reasoning

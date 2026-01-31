@@ -27,10 +27,8 @@ export const api = {
   },
   events: {
     listByAgent: makeFunctionReference<"query">("events:listByAgent"),
-    listByTask: makeFunctionReference<"query">("events:listByTask"),
     listRecent: makeFunctionReference<"query">("events:listRecent"),
     countsByType: makeFunctionReference<"query">("events:countsByType"),
-    log: makeFunctionReference<"mutation">("events:log"),
   },
   decisions: {
     listByAgent: makeFunctionReference<"query">("decisions:listByAgent"),
