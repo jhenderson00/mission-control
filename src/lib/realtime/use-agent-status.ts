@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "@/convex/_generated/api";
 import { useConnectionStatus } from "./connection-store";
+import { useStateSync } from "./state-sync";
 
 export type AgentStatusRecord = {
   agentId: string;
@@ -24,9 +25,17 @@ export function useAgentStatus(options: UseAgentStatusOptions = {}) {
     options.agentIds && options.agentIds.length > 0 ? options.agentIds : undefined;
   const data = useQuery(api.agents.listStatus, { agentIds });
 
+  const sync = useStateSync<AgentStatusRecord>({
+    key: "agent-status",
+    items: data === undefined ? undefined : (data as AgentStatusRecord[]),
+    getId: (status) => status.agentId,
+    getTimestamp: (status) =>
+      Math.max(status.lastActivity ?? 0, status.lastHeartbeat ?? 0),
+  });
+
   const statuses = useMemo<AgentStatusRecord[]>(
-    () => (data ?? []) as AgentStatusRecord[],
-    [data]
+    () => sync.items,
+    [sync.items]
   );
 
   const statusByAgent = useMemo(() => {
@@ -41,5 +50,8 @@ export function useAgentStatus(options: UseAgentStatusOptions = {}) {
     statuses,
     statusByAgent,
     isLoading: data === undefined,
+    isSyncing: sync.isSyncing,
+    hasGap: sync.hasGap,
+    isStale: sync.isStale,
   };
 }
