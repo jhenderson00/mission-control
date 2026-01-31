@@ -86,7 +86,7 @@ export default function DashboardPage() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline">Clawdbot Fleet</Badge>
+            <Badge variant="outline">Cydni Fleet</Badge>
             <Badge variant="secondary">North America</Badge>
           </div>
         </CardHeader>

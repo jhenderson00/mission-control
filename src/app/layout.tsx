@@ -23,7 +23,7 @@ const unbounded = Unbounded({
 });
 
 export const metadata: Metadata = {
-  title: "Mission Control",
+  title: "Cydni - Mission Control",
   description: "AI Organization Command Center — See everything your AI organization is doing, why it's doing it, and step in when needed.",
   keywords: ["AI", "agents", "orchestration", "monitoring", "dashboard"],
   authors: [{ name: "Cydni" }],

@@ -1,4 +1,4 @@
-# Mission Control 🚀
+# Cydni - Mission Control 🚀
 
 > AI Organization Command Center — See everything your AI organization is doing, why it's doing it, and step in when needed.
 
@@ -101,7 +101,7 @@ mission-control/
 
 - **Theme**: Dark mode with subtle space/grid background
 - **Aesthetic**: Vercel-inspired minimalism with white/gray outlines
-- **Branding**: Space/lobster themed (Clawdbot heritage)
+- **Branding**: Space/lobster themed (Cydni heritage)
 - **Colors**: Emerald (active), Amber (blocked), Red (failed), Blue (queued)
 
 ## Data Models

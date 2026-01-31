@@ -53,7 +53,7 @@ export function Sidebar() {
           <Rocket className="h-5 w-5 text-primary" />
         </div>
         <div className="space-y-0.5">
-          <p className="text-sm font-semibold font-display">Clawdbot Mission Control</p>
+          <p className="text-sm font-semibold font-display">Cydni Mission Control</p>
           <p className="text-xs text-muted-foreground">AI org command center</p>
         </div>
       </div>

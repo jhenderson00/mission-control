@@ -11,7 +11,7 @@ import RootLayout, { metadata, viewport } from "@/app/layout";
 
 describe("RootLayout", () => {
   it("exports metadata and viewport", () => {
-    expect(metadata.title).toBe("Mission Control");
+    expect(metadata.title).toBe("Cydni - Mission Control");
     expect(viewport.width).toBe("device-width");
   });
 

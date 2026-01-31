@@ -1,8 +1,8 @@
-# AGENTS.md - Mission Control
+# AGENTS.md - Cydni - Mission Control
 
 ## Project Overview
 
-Mission Control is a web-based command center for AI organization visibility. It provides real-time monitoring of AI agents, decision tracking, and task management.
+Cydni - Mission Control is a web-based command center for AI organization visibility. It provides real-time monitoring of AI agents, decision tracking, and task management.
 
 ## Tech Stack
 
@@ -99,7 +99,7 @@ src/
 ## Design Direction
 
 - **Theme:** Dark, minimalist, Vercel-inspired
-- **Brand:** Space/lobster themed (Clawdbot heritage)
+- **Brand:** Space/lobster themed (Cydni heritage)
 - **Colors:** 
   - Primary: Coral/orange (#FF785A)
   - Success: Emerald

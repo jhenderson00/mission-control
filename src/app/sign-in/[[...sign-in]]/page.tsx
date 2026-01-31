@@ -17,7 +17,7 @@ export default function SignInPage() {
           </Badge>
           <div className="space-y-3">
             <h1 className="text-3xl font-semibold font-display sm:text-4xl">
-              Enter Mission Control
+              Enter Cydni Mission Control
             </h1>
             <p className="text-sm text-muted-foreground sm:text-base">
               Authenticate to monitor real-time agent telemetry, decision chains,
