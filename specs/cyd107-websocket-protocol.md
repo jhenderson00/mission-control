@@ -251,31 +251,54 @@ export const ingest = httpAction(async (ctx, request) => {
 
 - Gateway provides `seq` on events for ordering
 - Bridge tracks last received `seq` per subscription
-- On reconnect, bridge can request events since last `seq` (if Gateway supports)
 
 ### Reconnection & Gap Handling
 
+**Important:** Gateway does **NOT** replay events. From Gateway docs:
+> "Events are not replayed; clients must refresh on gaps."
+
+**Reconnection Strategy:**
+
+1. **On initial connect:** `hello-ok` response includes snapshot of `presence` + `health`
+2. **On reconnect:** Bridge must fetch current state via request methods:
+   - `system-presence` → current presence entries
+   - `chat.history` → recent messages per session
+   - `sessions.list` → active sessions
+3. **Reconciliation:** Bridge compares fetched state with last known state in Convex
+4. **Resume:** New events flow normally after state sync
+
 ```typescript
 // Bridge reconnection logic
-async function reconnect() {
-  const lastSeq = await getLastSequence();
+async function onReconnect() {
+  // 1. Connect and get hello-ok snapshot
+  const helloOk = await connect();
   
-  // Attempt to resume from last sequence
-  ws.send(JSON.stringify({
-    type: "req",
-    method: "subscribe",
-    params: { 
-      events: ["agent", "presence", "heartbeat"],
-      since: lastSeq  // If supported by Gateway
-    }
-  }));
+  // 2. Fetch current state
+  const [presence, sessions] = await Promise.all([
+    request("system-presence"),
+    request("sessions.list")
+  ]);
+  
+  // 3. For each active session, fetch recent history
+  for (const session of sessions) {
+    const history = await request("chat.history", { 
+      sessionKey: session.key,
+      limit: 50 
+    });
+    await syncHistoryToConvex(session.key, history);
+  }
+  
+  // 4. Update presence/status in Convex
+  await syncPresenceToConvex(presence);
+  
+  // 5. Resume event streaming
 }
 ```
 
-If resume fails or Gateway doesn't support `since`:
-1. Bridge fetches current state snapshot via REST (if available)
-2. Convex reconciles snapshot with existing data
-3. New events flow normally
+**Gap Detection:**
+- Bridge tracks `lastEventTime` per subscription
+- If reconnect happens after >N seconds, full state sync is triggered
+- For short gaps (<5s), may skip full sync and just resume
 
 ## Authentication Flow
 
@@ -325,15 +348,133 @@ BRIDGE_SECRET=<shared-secret>
 | Direct vs proxied connection? | **Proxied** through Convex via bridge |
 | One Gateway or multiple? | **One** Gateway for Phase 2, multi-Gateway later |
 | Auth method? | **Static token** for Phase 2, OAuth later |
+| Does Gateway support `since` for event replay? | **No** — events are not replayed. Use `chat.history`, `sessions.list`, `system-presence` to fetch state on reconnect |
+| REST snapshot endpoint available? | **Yes** — via Gateway WS methods: `chat.history`, `sessions.list`, `system-presence`. Also `hello-ok` includes presence + health snapshot |
 
 ## Open Questions (Remaining)
 
 | Question | Notes |
 |----------|-------|
-| Does Gateway support `since` for event replay? | Need to check Gateway code |
-| What's the expected peak event rate? | Affects batching strategy |
-| REST snapshot endpoint available? | For reconnection fallback |
-| Should bridge run as systemd service or container? | Deployment decision |
+| What's the expected peak event rate? | Affects batching strategy. Estimate: streaming tokens could be 10-50 events/sec during active response |
+| Should bridge run as systemd service or container? | Deployment decision — recommend systemd on same host as Gateway initially |
+| Gap threshold for full state sync? | Propose 5 seconds — if disconnected longer, do full sync |
+
+## Event Rate Estimates
+
+| Event Type | Expected Rate | Notes |
+|------------|---------------|-------|
+| `agent` (streaming) | 10-50/sec during response | Token-by-token streaming |
+| `agent` (done) | 1 per response | Final message |
+| `heartbeat` | 1 per 15-30 sec per agent | Configurable interval |
+| `presence` | On connect/disconnect | Low frequency |
+| `chat` | 1 per message | User + assistant messages |
+
+**Batching Strategy:**
+- Bridge should batch events before pushing to Convex (100ms window or 10 events, whichever first)
+- Streaming tokens can be aggregated client-side for smoother rendering
+
+## Bridge Service Implementation Plan
+
+### Technology Stack
+
+- **Runtime:** Node.js (same as Clawdbot)
+- **WebSocket Client:** `ws` package
+- **HTTP Client:** `fetch` (native) for Convex HTTP actions
+- **Process Manager:** systemd (Linux) or launchd (macOS)
+
+### File Structure
+
+```
+bridge/
+├── src/
+│   ├── index.ts          # Entry point
+│   ├── gateway-client.ts # WebSocket connection to Gateway
+│   ├── convex-client.ts  # HTTP actions to Convex
+│   ├── event-buffer.ts   # Batching logic
+│   ├── state-sync.ts     # Reconnection state sync
+│   └── types.ts          # Shared types
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+### Core Logic
+
+```typescript
+// Simplified bridge flow
+class Bridge {
+  private ws: WebSocket;
+  private eventBuffer: EventBuffer;
+  private lastEventTime: number;
+
+  async start() {
+    await this.connect();
+    await this.initialSync();
+    this.startHeartbeat();
+  }
+
+  async connect() {
+    this.ws = new WebSocket(process.env.GATEWAY_URL);
+    
+    this.ws.on("message", (data) => {
+      const frame = JSON.parse(data);
+      if (frame.type === "event") {
+        this.handleEvent(frame);
+      }
+    });
+
+    this.ws.on("close", () => this.reconnect());
+    
+    // Send connect request
+    await this.authenticate();
+  }
+
+  handleEvent(frame: GatewayEvent) {
+    this.lastEventTime = Date.now();
+    this.eventBuffer.add(frame);
+  }
+
+  async flushEvents() {
+    const batch = this.eventBuffer.drain();
+    if (batch.length > 0) {
+      await convexClient.ingestEvents(batch);
+    }
+  }
+}
+```
+
+### Deployment (Phase 1)
+
+1. **Location:** Same host as Clawdbot Gateway
+2. **Process:** systemd service (or launchd on macOS)
+3. **Logging:** stdout → journald (or file rotation)
+4. **Monitoring:** Health endpoint on localhost for basic checks
+
+```ini
+# /etc/systemd/system/mission-control-bridge.service
+[Unit]
+Description=Mission Control Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=clawdbot
+WorkingDirectory=/opt/mission-control-bridge
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Future Improvements (Phase 3+)
+
+- Container deployment for easier scaling
+- Multiple Gateway support (bridge per Gateway or aggregated)
+- Metrics export (Prometheus)
+- Dead letter queue for failed Convex pushes
 
 ## Success Criteria
 
