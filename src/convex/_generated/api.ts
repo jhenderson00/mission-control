@@ -43,6 +43,14 @@ export const api = {
     record: makeFunctionReference<"mutation">("decisions:record"),
     resolve: makeFunctionReference<"mutation">("decisions:resolve"),
   },
+  controls: {
+    dispatch: makeFunctionReference<"action">("controls:dispatch"),
+    bulkDispatch: makeFunctionReference<"action">("controls:bulkDispatch"),
+    activeByAgent: makeFunctionReference<"query">("controls:activeByAgent"),
+    recentByOperator: makeFunctionReference<"query">("controls:recentByOperator"),
+    auditByAgent: makeFunctionReference<"query">("controls:auditByAgent"),
+    auditByOperator: makeFunctionReference<"query">("controls:auditByOperator"),
+  },
 };
 
 export const internal = {};

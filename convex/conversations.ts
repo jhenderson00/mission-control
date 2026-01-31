@@ -55,6 +55,8 @@ const chatPayloadSchema = z.union([
 ]);
 
 type Role = "user" | "assistant" | "system";
+type ChatMessage = z.infer<typeof chatMessageSchema>;
+type ChatPayload = z.infer<typeof chatPayloadSchema>;
 
 function normalizeRole(role: string | undefined): Role {
   if (role === "user" || role === "assistant" || role === "system") {
@@ -168,12 +170,11 @@ export const processChatEvent = internalMutation({
       return [];
     }
 
-    const payload = parsed.data;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = Array.isArray(payload)
+    const payload = parsed.data as ChatPayload;
+    const messages: ChatMessage[] = Array.isArray(payload)
       ? payload
       : "messages" in payload
-        ? (payload as { messages: any[] }).messages
+        ? (payload as { messages: ChatMessage[] }).messages
         : [payload];
 
     const inserted: string[] = [];
