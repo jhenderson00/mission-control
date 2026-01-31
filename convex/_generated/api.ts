@@ -1,0 +1,46 @@
+/**
+ * Stub file for Convex API types
+ *
+ * This will be replaced when you run `npx convex dev` with a configured project.
+ */
+
+import { makeFunctionReference } from "convex/server";
+
+export const api = {
+  agents: {
+    list: makeFunctionReference<"query">("agents:list"),
+    get: makeFunctionReference<"query">("agents:get"),
+    listWithTasks: makeFunctionReference<"query">("agents:listWithTasks"),
+    statusCounts: makeFunctionReference<"query">("agents:statusCounts"),
+    create: makeFunctionReference<"mutation">("agents:create"),
+    updateStatus: makeFunctionReference<"mutation">("agents:updateStatus"),
+    remove: makeFunctionReference<"mutation">("agents:remove"),
+  },
+  tasks: {
+    list: makeFunctionReference<"query">("tasks:list"),
+    get: makeFunctionReference<"query">("tasks:get"),
+    statusCounts: makeFunctionReference<"query">("tasks:statusCounts"),
+    listWithAgents: makeFunctionReference<"query">("tasks:listWithAgents"),
+    create: makeFunctionReference<"mutation">("tasks:create"),
+    updateStatus: makeFunctionReference<"mutation">("tasks:updateStatus"),
+    assignAgents: makeFunctionReference<"mutation">("tasks:assignAgents"),
+  },
+  events: {
+    listByAgent: makeFunctionReference<"query">("events:listByAgent"),
+    listByTask: makeFunctionReference<"query">("events:listByTask"),
+    listRecent: makeFunctionReference<"query">("events:listRecent"),
+    countsByType: makeFunctionReference<"query">("events:countsByType"),
+    log: makeFunctionReference<"mutation">("events:log"),
+  },
+  decisions: {
+    listByAgent: makeFunctionReference<"query">("decisions:listByAgent"),
+    listByTask: makeFunctionReference<"query">("decisions:listByTask"),
+    listRecent: makeFunctionReference<"query">("decisions:listRecent"),
+    getWithChain: makeFunctionReference<"query">("decisions:getWithChain"),
+    pendingCount: makeFunctionReference<"query">("decisions:pendingCount"),
+    record: makeFunctionReference<"mutation">("decisions:record"),
+    resolve: makeFunctionReference<"mutation">("decisions:resolve"),
+  },
+};
+
+export const internal = {};
