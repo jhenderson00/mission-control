@@ -29,6 +29,7 @@ const eventTypes = ["agent", "chat", "presence", "health", "heartbeat"] as const
 
 type NormalizedEvent = {
   _id: string;
+  agentId: string;
   createdAt: number;
   type: string;
   content: string;
@@ -69,12 +70,14 @@ function normalizeEvent(event: {
   _id: string;
   receivedAt: number;
   timestamp: string;
+  agentId: string;
   eventType: string;
   payload: unknown;
 }): NormalizedEvent {
   const createdAt = normalizeTimestamp(event.timestamp, event.receivedAt);
   return {
     _id: event._id,
+    agentId: event.agentId,
     createdAt,
     type: event.eventType,
     content: summarizePayload(event.eventType, event.payload),
@@ -170,6 +173,7 @@ export const listByAgent = query({
         _id: event._id,
         receivedAt: event.receivedAt,
         timestamp: event.timestamp,
+        agentId: event.agentId,
         eventType: event.eventType,
         payload: event.payload,
       })
@@ -199,6 +203,7 @@ export const listRecent = query({
           _id: event._id,
           receivedAt: event.receivedAt,
           timestamp: event.timestamp,
+          agentId: event.agentId,
           eventType: event.eventType,
           payload: event.payload,
         })
@@ -215,6 +220,7 @@ export const listRecent = query({
         _id: event._id,
         receivedAt: event.receivedAt,
         timestamp: event.timestamp,
+        agentId: event.agentId,
         eventType: event.eventType,
         payload: event.payload,
       })

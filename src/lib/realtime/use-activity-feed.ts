@@ -7,6 +7,7 @@ import { useConnectionStatus } from "./connection-store";
 
 export type ActivityEvent = {
   _id: string;
+  agentId: string;
   createdAt: number;
   type: string;
   content: string;

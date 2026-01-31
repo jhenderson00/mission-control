@@ -11,6 +11,7 @@ import {
   Share2,
   Users,
   Rocket,
+  Activity,
 } from "lucide-react";
 
 const navItems = [
@@ -26,6 +27,12 @@ const navItems = [
     description: "Operators, roles, availability",
     icon: Users,
     badge: "12",
+  },
+  {
+    href: "/activity",
+    label: "Activity",
+    description: "Live agent actions & events",
+    icon: Activity,
   },
   {
     href: "/tasks",

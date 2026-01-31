@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Rocket,
+  Activity,
 } from "lucide-react";
 
 const navItems = [
@@ -27,6 +28,11 @@ const navItems = [
     label: "Agents",
     icon: Users,
     badge: "12",
+  },
+  {
+    href: "/activity",
+    label: "Activity",
+    icon: Activity,
   },
   {
     href: "/tasks",
