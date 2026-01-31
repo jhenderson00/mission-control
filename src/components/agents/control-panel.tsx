@@ -37,7 +37,7 @@ type DispatchStatus = {
   message: string;
 };
 
-export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): JSX.Element {
+export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): React.ReactElement {
   const dispatch = useAction(api.controls.dispatch);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [status, setStatus] = useState<DispatchStatus | null>(null);
