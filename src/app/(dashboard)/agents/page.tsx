@@ -1,12 +1,29 @@
+"use client";
+
+import { useMemo } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
-import { allMockAgents } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { allMockAgents } from "@/lib/mock-data";
 
-const onlineCount = allMockAgents.filter((agent) => agent.status === "active").length;
+const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 export default function AgentsPage() {
+  const agents = useQuery(api.agents.listWithTasks, {});
+
+  const isLoading = hasConvex && agents === undefined;
+  const agentList = hasConvex ? agents ?? [] : allMockAgents;
+
+  const onlineCount = useMemo(() => {
+    if (isLoading) return null;
+    return agentList.filter((agent) => agent.status === "active").length;
+  }, [agentList, isLoading]);
+
+  const totalCount = isLoading ? null : agentList.length;
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -22,12 +39,18 @@ export default function AgentsPage() {
         />
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-2 w-2 rounded-full bg-primary" />
-          <span>{onlineCount} active</span>
-          <Badge variant="outline">{allMockAgents.length} total</Badge>
+          <span>{onlineCount ?? "—"} active</span>
+          <Badge variant="outline">{totalCount ?? "—"} total</Badge>
         </div>
       </div>
 
-      <AgentStatusGrid agents={allMockAgents} />
+      {isLoading ? (
+        <div className="rounded-xl border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+          Loading agents...
+        </div>
+      ) : (
+        <AgentStatusGrid agents={agentList} />
+      )}
     </div>
   );
 }

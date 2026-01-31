@@ -18,7 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import type { MockAgent, AgentType, AgentStatus } from "@/lib/mock-data";
+import type { AgentSummary, AgentType, AgentStatus } from "@/lib/agent-types";
 
 const typeIcons: Record<AgentType, typeof Cpu> = {
   coordinator: Brain,
@@ -89,7 +89,7 @@ function ProgressBar({ status }: { status: AgentStatus }) {
   );
 }
 
-function AgentCard({ agent }: { agent: MockAgent }) {
+function AgentCard({ agent }: { agent: AgentSummary }) {
   const TypeIcon = typeIcons[agent.type];
   const config = statusConfig[agent.status];
   const StatusIcon = config.icon;
@@ -161,17 +161,17 @@ function AgentCard({ agent }: { agent: MockAgent }) {
 }
 
 interface AgentStatusGridProps {
-  agents: MockAgent[];
+  agents: AgentSummary[];
   className?: string;
 }
 
 export function AgentStatusGrid({ agents, className }: AgentStatusGridProps) {
   const { activeAgents, idleAgents, blockedAgents, failedAgents, standbyAgents } =
     useMemo(() => {
-      const active: MockAgent[] = [];
-      const idle: MockAgent[] = [];
-      const blocked: MockAgent[] = [];
-      const failed: MockAgent[] = [];
+      const active: AgentSummary[] = [];
+      const idle: AgentSummary[] = [];
+      const blocked: AgentSummary[] = [];
+      const failed: AgentSummary[] = [];
 
       for (const agent of agents) {
         switch (agent.status) {

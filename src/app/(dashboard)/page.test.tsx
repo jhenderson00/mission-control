@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import DashboardPage from "@/app/(dashboard)/page";
+
+vi.mock("convex/react", () => ({
+  useQuery: vi.fn(),
+}));
 
 describe("DashboardPage", () => {
   it("renders mission overview", () => {

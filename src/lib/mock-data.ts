@@ -3,25 +3,10 @@
  * This will be replaced with real Convex data when the backend is connected
  */
 
-// Types matching our Convex schema
-export type AgentType = "coordinator" | "planner" | "executor" | "critic" | "specialist";
-export type AgentStatus = "idle" | "active" | "blocked" | "failed";
-
-export interface MockAgent {
-  _id: string;
-  name: string;
-  type: AgentType;
-  model: string;
-  status: AgentStatus;
-  currentTask?: {
-    title: string;
-  } | null;
-  startedAt?: number;
-  host: string;
-}
+import type { AgentSummary } from "@/lib/agent-types";
 
 // Mock agents data
-export const mockAgents: MockAgent[] = [
+export const mockAgents: AgentSummary[] = [
   {
     _id: "agent_1",
     name: "Claude Code #47",
@@ -73,7 +58,7 @@ export const mockAgents: MockAgent[] = [
 ];
 
 // Extended mock for agents page
-export const allMockAgents: MockAgent[] = [
+export const allMockAgents: AgentSummary[] = [
   ...mockAgents,
   {
     _id: "agent_6",

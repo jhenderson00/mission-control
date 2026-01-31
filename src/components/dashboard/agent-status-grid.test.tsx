@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
-import type { MockAgent } from "@/lib/mock-data";
+import type { AgentSummary } from "@/lib/agent-types";
 
 describe("AgentStatusGrid", () => {
   beforeEach(() => {
@@ -19,7 +19,7 @@ describe("AgentStatusGrid", () => {
   });
 
   it("renders status counts and sections", () => {
-    const agents: MockAgent[] = [
+    const agents: AgentSummary[] = [
       {
         _id: "agent_1",
         name: "Alpha",

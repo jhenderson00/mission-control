@@ -1,7 +1,10 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { useQuery } from "convex/react";
+import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { mockAgents } from "@/lib/mock-data";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { mockAgents } from "@/lib/mock-data";
 import {
   AlertCircle,
   ArrowRight,
@@ -20,38 +24,40 @@ import {
   Siren,
 } from "lucide-react";
 
-const mockEvents = [
+const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
+
+const fallbackEvents = [
   {
     id: "event_1",
-    time: "7:18 PM",
+    createdAt: Date.now() - 2 * 60 * 1000,
     type: "tool_call",
-    summary: "read_file(\"src/api/routes.ts\")",
+    content: "read_file(\"src/api/routes.ts\")",
   },
   {
     id: "event_2",
-    time: "7:19 PM",
+    createdAt: Date.now() - 7 * 60 * 1000,
     type: "message",
-    summary: "Flagged potential SQL injection in PR #234",
+    content: "Flagged potential SQL injection in PR #234",
   },
   {
     id: "event_3",
-    time: "7:20 PM",
+    createdAt: Date.now() - 12 * 60 * 1000,
     type: "tool_result",
-    summary: "npm test → 47 passed, 0 failed",
+    content: "npm test → 47 passed, 0 failed",
   },
 ];
 
-const mockDecisions = [
+const fallbackDecisions = [
   {
     id: "decision_1",
-    title: "Escalate SQL injection risk",
-    confidence: "0.92",
+    decision: "Escalate SQL injection risk",
+    confidence: 0.92,
     outcome: "pending",
   },
   {
     id: "decision_2",
-    title: "Request human approval on release note",
-    confidence: "0.78",
+    decision: "Request human approval on release note",
+    confidence: 0.78,
     outcome: "pending",
   },
 ];
@@ -68,19 +74,70 @@ export default function AgentDetailPage({
 }: {
   params: { id: string };
 }) {
-  const { id } = params;
-  const agent = mockAgents.find((item) => item._id === id);
+  const agentId = params.id as Id<"agents">;
 
-  if (!agent) {
-    notFound();
+  const agent = useQuery(api.agents.get, { id: agentId });
+  const events = useQuery(api.events.listByAgent, { agentId });
+  const decisions = useQuery(api.decisions.listByAgent, { agentId });
+  const currentTask = useQuery(
+    api.tasks.get,
+    !hasConvex || !agent?.currentTaskId
+      ? "skip"
+      : { id: agent.currentTaskId }
+  );
+
+  const fallbackAgent =
+    mockAgents.find((item) => item._id === params.id) ?? mockAgents[0];
+
+  const isLoadingAgent = hasConvex && agent === undefined;
+  const agentData = hasConvex ? agent : fallbackAgent;
+
+  const isLoadingEvents = hasConvex && events === undefined;
+  const eventList = hasConvex ? events ?? [] : fallbackEvents;
+
+  const isLoadingDecisions = hasConvex && decisions === undefined;
+  const decisionList = hasConvex ? decisions ?? [] : fallbackDecisions;
+
+  if (isLoadingAgent) {
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          title="Agent"
+          description="Loading agent telemetry..."
+          badge="Loading"
+        />
+        <Card className="border-border/60 bg-card/40">
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            Pulling agent status and decision logs.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!agentData) {
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          title="Agent not found"
+          description="We couldn't locate this agent in Convex."
+          badge="Missing"
+        />
+        <Card className="border-border/60 bg-card/40">
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            Check the agent ID and try again.
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={agent.name}
-        description={`Model ${agent.model} · ${agent.host.toUpperCase()} node`}
-        badge={agent.status === "active" ? "Live" : agent.status}
+        title={agentData.name}
+        description={`Model ${agentData.model} · ${agentData.host.toUpperCase()} node`}
+        badge={agentData.status === "active" ? "Live" : agentData.status}
       />
 
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
@@ -91,21 +148,26 @@ export default function AgentDetailPage({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={statusStyles[agent.status]}>
-                {agent.status}
+              <Badge
+                variant="outline"
+                className={statusStyles[agentData.status] ?? ""}
+              >
+                {agentData.status}
               </Badge>
-              <Badge variant="outline">{agent.type}</Badge>
-              <Badge variant="outline">{agent.model}</Badge>
-              <Badge variant="outline">{agent.host}</Badge>
+              <Badge variant="outline">{agentData.type}</Badge>
+              <Badge variant="outline">{agentData.model}</Badge>
+              <Badge variant="outline">{agentData.host}</Badge>
             </div>
 
             <div className="rounded-xl border border-border/60 bg-background/50 p-4">
               <p className="text-sm font-medium text-foreground">Current task</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {agent.currentTask?.title ?? "No active task assigned."}
+                {hasConvex
+                  ? currentTask?.title ?? "No active task assigned."
+                  : agentData.currentTask?.title ?? "No active task assigned."}
               </p>
               <p className="mt-3 text-xs text-muted-foreground">
-                Uptime: {formatDuration(agent.startedAt, "Idle")}
+                Uptime: {formatDuration(agentData.startedAt, "Idle")}
               </p>
             </div>
 
@@ -129,18 +191,35 @@ export default function AgentDetailPage({
             <CardDescription>Latest activity from the agent stream.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
-            {mockEvents.map((event) => (
-              <div
-                key={event.id}
-                className="rounded-lg border border-border/60 bg-background/50 p-3"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="uppercase tracking-wide">{event.type}</span>
-                  <span className="text-muted-foreground">{event.time}</span>
-                </div>
-                <p className="mt-2 text-sm text-foreground">{event.summary}</p>
+            {isLoadingEvents && (
+              <div className="rounded-xl border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+                Loading events...
               </div>
-            ))}
+            )}
+            {!isLoadingEvents && eventList.length === 0 && (
+              <div className="rounded-xl border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+                No events logged for this agent yet.
+              </div>
+            )}
+            {!isLoadingEvents &&
+              eventList.map((event) => (
+                <div
+                  key={event.id ?? event._id}
+                  className="rounded-lg border border-border/60 bg-background/50 p-3"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="uppercase tracking-wide">
+                      {event.type}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {formatRelativeTime(event.createdAt, "just now")}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-foreground">
+                    {event.content}
+                  </p>
+                </div>
+              ))}
           </CardContent>
         </Card>
       </div>
@@ -151,29 +230,37 @@ export default function AgentDetailPage({
           <CardDescription>Decisions awaiting approval or resolution.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {mockDecisions.map((decision, index) => (
-            <div key={decision.id}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {decision.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Confidence {decision.confidence}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{decision.outcome}</Badge>
-                  <Button variant="outline" size="sm">
-                    Review <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-              {index !== mockDecisions.length - 1 && <Separator className="mt-4" />}
+          {isLoadingDecisions && (
+            <div className="rounded-xl border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+              Loading decisions...
             </div>
-          ))}
+          )}
+          {!isLoadingDecisions &&
+            decisionList.map((decision, index) => (
+              <div key={decision.id ?? decision._id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {decision.decision}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Confidence {decision.confidence?.toFixed(2) ?? "—"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{decision.outcome}</Badge>
+                    <Button variant="outline" size="sm">
+                      Review <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                {index !== decisionList.length - 1 && (
+                  <Separator className="mt-4" />
+                )}
+              </div>
+            ))}
 
-          {mockDecisions.length === 0 && (
+          {!isLoadingDecisions && decisionList.length === 0 && (
             <div className="rounded-xl border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
               <AlertCircle className="mx-auto mb-2 h-5 w-5" />
               No pending decisions logged for this agent.
