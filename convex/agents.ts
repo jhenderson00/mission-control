@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { z } from "zod";
+import type { Doc } from "./_generated/dataModel";
 import { query, mutation, internalMutation } from "./_generated/server";
 
 const eventValidator = v.object({
@@ -147,6 +148,30 @@ export const statusCounts = query({
     }
     
     return counts;
+  },
+});
+
+/**
+ * List materialized agent status from gateway events.
+ */
+export const listStatus = query({
+  args: {
+    agentIds: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentStatus">>> => {
+    if (args.agentIds && args.agentIds.length > 0) {
+      const results = await Promise.all(
+        args.agentIds.map((agentId) =>
+          ctx.db
+            .query("agentStatus")
+            .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+            .take(1)
+        )
+      );
+      return results.flat();
+    }
+
+    return await ctx.db.query("agentStatus").collect();
   },
 });
 

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { z } from "zod";
-import { internalMutation } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { internalMutation, query } from "./_generated/server";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -214,5 +215,22 @@ export const processChatEvent = internalMutation({
     }
 
     return inserted;
+  },
+});
+
+/**
+ * List conversation messages for a session.
+ */
+export const listBySession = query({
+  args: {
+    sessionKey: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"messages">>> => {
+    return await ctx.db
+      .query("messages")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .order("asc")
+      .take(args.limit ?? 200);
   },
 });
