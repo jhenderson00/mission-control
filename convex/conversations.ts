@@ -74,23 +74,9 @@ function normalizeTimestamp(value: string | number | undefined, fallback: number
   return fallback;
 }
 
-type IndexQuery = {
-  eq: (field: "sessionKey" | "sequence", value: string | number) => IndexQuery;
-};
-
 async function upsertMessage(
-  ctx: {
-    db: {
-      query: (tableName: "messages") => {
-        withIndex: (
-          index: "by_session",
-          builder: (q: IndexQuery) => unknown
-        ) => { take: (count: number) => Promise<Array<{ _id: string }>> };
-      };
-      patch: (id: string, updates: Record<string, unknown>) => Promise<void>;
-      insert: (tableName: "messages", value: Record<string, unknown>) => Promise<string>;
-    };
-  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
   message: {
     sessionKey: string;
     agentId: string;
@@ -103,7 +89,8 @@ async function upsertMessage(
 ): Promise<string> {
   const existing = await ctx.db
     .query("messages")
-    .withIndex("by_session", (q) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_session", (q: any) =>
       q.eq("sessionKey", message.sessionKey).eq("sequence", message.sequence)
     )
     .take(1);
@@ -182,10 +169,11 @@ export const processChatEvent = internalMutation({
     }
 
     const payload = parsed.data;
-    const messages = Array.isArray(payload)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = Array.isArray(payload)
       ? payload
       : "messages" in payload
-        ? payload.messages
+        ? (payload as { messages: any[] }).messages
         : [payload];
 
     const inserted: string[] = [];

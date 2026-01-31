@@ -187,9 +187,10 @@ export const listRecent = query({
   },
   handler: async (ctx, args): Promise<NormalizedEvent[]> => {
     if (args.type) {
+      const eventType = args.type;
       const events = await ctx.db
         .query("events")
-        .withIndex("by_type", (q) => q.eq("eventType", args.type))
+        .withIndex("by_type", (q) => q.eq("eventType", eventType))
         .order("desc")
         .take(args.limit ?? 50);
 

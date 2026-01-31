@@ -49,9 +49,10 @@ export const listRecent = query({
   },
   handler: async (ctx, args) => {
     if (args.outcome) {
+      const outcome = args.outcome;
       return await ctx.db
         .query("decisions")
-        .withIndex("by_outcome", (q) => q.eq("outcome", args.outcome))
+        .withIndex("by_outcome", (q) => q.eq("outcome", outcome))
         .order("desc")
         .take(args.limit ?? 50);
     }

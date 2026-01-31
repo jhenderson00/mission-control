@@ -38,18 +38,8 @@ function normalizeTimestamp(value: string | undefined, fallback: number): number
 }
 
 async function upsertStatus(
-  ctx: {
-    db: {
-      query: (tableName: "agentStatus") => {
-        withIndex: (
-          index: "by_agent",
-          builder: (q: { eq: (field: "agentId", value: string) => unknown }) => unknown
-        ) => { take: (count: number) => Promise<Array<{ _id: string }>> };
-      };
-      patch: (id: string, updates: Record<string, unknown>) => Promise<void>;
-      insert: (tableName: "agentStatus", value: Record<string, unknown>) => Promise<string>;
-    };
-  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
   status: {
     agentId: string;
     lastHeartbeat: number;
@@ -60,7 +50,8 @@ async function upsertStatus(
 ): Promise<string> {
   const existing = await ctx.db
     .query("agentStatus")
-    .withIndex("by_agent", (q) => q.eq("agentId", status.agentId))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_agent", (q: any) => q.eq("agentId", status.agentId))
     .take(1);
 
   if (existing.length > 0) {
@@ -85,9 +76,10 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     if (args.status) {
+      const status = args.status;
       return await ctx.db
         .query("agents")
-        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
         .collect();
     }
