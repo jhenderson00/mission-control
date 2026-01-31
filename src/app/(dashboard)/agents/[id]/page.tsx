@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ConversationView } from "@/components/conversation/conversation-view";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { mockAgents } from "@/lib/mock-data";
+import { useAgentStatus, useConversation } from "@/lib/realtime";
 import {
   AlertCircle,
   ArrowRight,
@@ -94,6 +96,7 @@ export default function AgentDetailPage({
   const agent = useQuery(api.agents.get, { id: agentId });
   const events = useQuery(api.events.listByAgent, { agentId });
   const decisions = useQuery(api.decisions.listByAgent, { agentId });
+  const { statusByAgent } = useAgentStatus({ agentIds: [agentId] });
   const currentTask = useQuery(
     api.tasks.get,
     !hasConvex || !agent?.currentTaskId
@@ -106,6 +109,9 @@ export default function AgentDetailPage({
 
   const isLoadingAgent = hasConvex && agent === undefined;
   const agentData = hasConvex ? agent : fallbackAgent;
+  const liveStatus = statusByAgent.get(agentId);
+  const sessionKey = liveStatus?.currentSession ?? agentData?.sessionId;
+  const conversation = useConversation(sessionKey, { limit: 200 });
 
   const isLoadingEvents = hasConvex && events === undefined;
   const eventList: EventItem[] = hasConvex ? events ?? [] : fallbackEvents;
@@ -240,6 +246,13 @@ export default function AgentDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <ConversationView
+        messages={conversation.messages}
+        isLoading={conversation.isLoading}
+        isStreaming={conversation.isStreaming}
+        sessionKey={sessionKey}
+      />
 
       <Card className="border-border/60 bg-card/40">
         <CardHeader>
