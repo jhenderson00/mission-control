@@ -16,7 +16,7 @@ const roleLabels: Record<ConversationMessage["role"], string> = {
   system: "System",
 };
 
-export function MessageBubble({ message }: MessageBubbleProps): JSX.Element {
+export function MessageBubble({ message }: MessageBubbleProps): React.ReactElement {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 

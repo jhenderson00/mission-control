@@ -71,7 +71,7 @@ const statusConfig: Record<
   },
 };
 
-function ProgressBar({ status }: { status: AgentStatus }): JSX.Element {
+function ProgressBar({ status }: { status: AgentStatus }): React.ReactElement {
   const progress = status === "active" ? 60 : status === "blocked" ? 30 : 0;
 
   return (
@@ -97,7 +97,7 @@ function ProgressBar({ status }: { status: AgentStatus }): JSX.Element {
   );
 }
 
-function AgentCard({ agent, heartbeatStatus }: AgentCardProps): JSX.Element {
+function AgentCard({ agent, heartbeatStatus }: AgentCardProps): React.ReactElement {
   const TypeIcon = typeIcons[agent.type];
   const config = statusConfig[agent.status];
   const StatusIcon = config.icon;
@@ -182,7 +182,7 @@ interface AgentStatusGridProps {
 export function AgentStatusGrid({
   agents,
   className,
-}: AgentStatusGridProps): JSX.Element {
+}: AgentStatusGridProps): React.ReactElement {
   const agentIds = useMemo(() => agents.map((agent) => agent._id), [agents]);
   const { statusByAgent } = useAgentStatus({ agentIds });
 

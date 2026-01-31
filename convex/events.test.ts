@@ -89,4 +89,60 @@ describe("events functions", () => {
     const counts = await events.countsByType._handler(ctx, { since: Date.now() - 500 });
     expect(counts.agent).toBe(1);
   });
+
+  it("summarizes payload shapes into content", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("events", {
+      eventId: "evt_str",
+      eventType: "chat",
+      agentId: "agent_1",
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: "Raw string payload",
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_content",
+      eventType: "agent",
+      agentId: "agent_2",
+      sessionKey: "session_2",
+      timestamp: new Date().toISOString(),
+      sequence: 2,
+      payload: { content: "Object content" },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_delta",
+      eventType: "agent",
+      agentId: "agent_3",
+      sessionKey: "session_3",
+      timestamp: new Date().toISOString(),
+      sequence: 3,
+      payload: { delta: { content: "Delta content" } },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_status",
+      eventType: "heartbeat",
+      agentId: "agent_4",
+      sessionKey: "session_4",
+      timestamp: "invalid",
+      sequence: 4,
+      payload: { status: "ok" },
+      receivedAt: Date.now(),
+    });
+
+    const recent = await events.listRecent._handler(ctx, { limit: 10 });
+    const contents = recent.map((event) => event.content);
+
+    expect(contents).toEqual(
+      expect.arrayContaining([
+        "Raw string payload",
+        "Object content",
+        "Delta content",
+        "ok",
+      ])
+    );
+  });
 });

@@ -10,7 +10,7 @@ type StreamingIndicatorProps = {
 export function StreamingIndicator({
   label = "Streaming",
   className,
-}: StreamingIndicatorProps): JSX.Element {
+}: StreamingIndicatorProps): React.ReactElement {
   return (
     <span
       className={cn(

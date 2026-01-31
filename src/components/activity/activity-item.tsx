@@ -28,7 +28,7 @@ type ActivityItemProps = {
   event: ActivityEvent;
 };
 
-export function ActivityItem({ event }: ActivityItemProps): JSX.Element {
+export function ActivityItem({ event }: ActivityItemProps): React.ReactElement {
   const timeLabel = formatRelativeTime(event.createdAt, "just now");
   const typeLabel = formatEventType(event.type);
   const tone = typeTone[event.type] ?? "border-border/60 bg-muted/40 text-muted-foreground";

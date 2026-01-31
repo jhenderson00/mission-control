@@ -23,7 +23,7 @@ export function ConversationView({
   isStreaming = false,
   sessionKey,
   className,
-}: ConversationViewProps): JSX.Element {
+}: ConversationViewProps): React.ReactElement {
   const orderedMessages = useMemo(() => {
     return [...messages].sort((a, b) => a.sequence - b.sequence);
   }, [messages]);

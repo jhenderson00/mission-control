@@ -94,7 +94,7 @@ const statusStyles: Record<
   },
 };
 
-export function ConnectionBadge({ className }: { className?: string }): JSX.Element {
+export function ConnectionBadge({ className }: { className?: string }): React.ReactElement {
   const { displayStatus } = useConnectionIndicator();
   const style = statusStyles[displayStatus];
   const isConnecting = displayStatus === "connecting";
@@ -126,7 +126,7 @@ export function ConnectionBadge({ className }: { className?: string }): JSX.Elem
   );
 }
 
-export function ConnectionBanner(): JSX.Element | null {
+export function ConnectionBanner(): React.ReactElement | null {
   const {
     isDisconnected,
     staleDuration,

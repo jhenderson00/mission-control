@@ -52,4 +52,66 @@ describe("convex test utils", () => {
     expect(results).toHaveLength(2);
     expect(results[0].name).toBe("Gamma");
   });
+
+  it("supports array equality in withIndex", async () => {
+    const ctx = createMockCtx();
+    ctx.db.seed("agentControlOperations", [
+      { agentIds: ["agent-1"], status: "queued" },
+      { agentIds: ["agent-2"], status: "queued" },
+    ]);
+
+    const results = await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_agent", (q) => q.eq("agentIds", ["agent-1"]))
+      .collect();
+
+    expect(results).toHaveLength(1);
+  });
+
+  it("filters with field expressions in filter", async () => {
+    const ctx = createMockCtx();
+    ctx.db.seed("agentControlOperations", [
+      { agentIds: ["agent-1"], status: "queued", params: { reason: "test" } },
+      { agentIds: ["agent-1"], status: "failed", params: { reason: "bad" } },
+      { agentIds: ["agent-2"], status: "sent", params: { reason: "test" } },
+    ]);
+
+    const results = await ctx.db
+      .query("agentControlOperations")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("agentIds"), ["agent-1"]),
+          q.or(
+            q.eq(q.field("status"), "queued"),
+            q.eq(q.field("status"), "sent")
+          ),
+          q.eq(q.field("params.reason"), "test")
+        )
+      )
+      .collect();
+
+    expect(results).toHaveLength(1);
+    expect(results[0].status).toBe("queued");
+  });
+
+  it("matches object equality in withIndex", async () => {
+    const ctx = createMockCtx();
+    ctx.db.seed("agentControlOperations", [
+      { params: { reason: "alpha", meta: { level: 1 } } },
+      { params: { reason: "beta", meta: { level: 2 } } },
+    ]);
+
+    const matches = await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_params", (q) => q.eq("params", { reason: "alpha", meta: { level: 1 } }))
+      .collect();
+
+    const misses = await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_params", (q) => q.eq("params", { reason: "gamma" }))
+      .collect();
+
+    expect(matches).toHaveLength(1);
+    expect(misses).toHaveLength(0);
+  });
 });

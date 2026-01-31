@@ -17,7 +17,7 @@ type ActivityFeedProps = {
 export function ActivityFeed({
   limit = 80,
   className,
-}: ActivityFeedProps): JSX.Element {
+}: ActivityFeedProps): React.ReactElement {
   const { events, isLoading } = useActivityFeed({ limit });
   const [selectedAgentId, setSelectedAgentId] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");

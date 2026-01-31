@@ -31,7 +31,7 @@ const heartbeatStyles: Record<HeartbeatStatus, { label: string; dot: string; tex
 export function HeartbeatIndicator({
   status = "offline",
   className,
-}: HeartbeatIndicatorProps): JSX.Element {
+}: HeartbeatIndicatorProps): React.ReactElement {
   const style = heartbeatStyles[status];
 
   return (

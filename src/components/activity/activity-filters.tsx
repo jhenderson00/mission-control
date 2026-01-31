@@ -64,7 +64,7 @@ export function ActivityFilters({
   onAgentChange,
   onTypeChange,
   isLoading,
-}: ActivityFiltersProps): JSX.Element {
+}: ActivityFiltersProps): React.ReactElement {
   const sortedAgents = [...agentIds].sort((a, b) => a.localeCompare(b));
   const sortedTypes = [...eventTypes].sort((a, b) => a.localeCompare(b));
 
