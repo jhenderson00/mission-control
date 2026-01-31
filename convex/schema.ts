@@ -139,6 +139,62 @@ export default defineSchema({
     .index("by_agent", ["agentId"]),
 
   /**
+   * Agent Control Operations - Pending control commands
+   */
+  agentControlOperations: defineTable({
+    operationId: v.string(),
+    requestId: v.string(),
+    bulkId: v.optional(v.string()),
+    agentId: v.string(),
+    command: v.string(),
+    params: v.optional(v.any()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("sent"),
+      v.literal("acked"),
+      v.literal("failed"),
+      v.literal("timed-out")
+    ),
+    requestedBy: v.string(),
+    requestedAt: v.number(),
+    ackedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_operation_id", ["operationId"])
+    .index("by_request", ["requestId"])
+    .index("by_agent", ["agentId", "requestedAt"])
+    .index("by_requested_by", ["requestedBy", "requestedAt"])
+    .index("by_bulk", ["bulkId", "requestedAt"])
+    .index("by_status", ["status", "requestedAt"]),
+
+  /**
+   * Agent Control Audits - Immutable audit log
+   */
+  agentControlAudits: defineTable({
+    operationId: v.string(),
+    requestId: v.string(),
+    bulkId: v.optional(v.string()),
+    agentId: v.string(),
+    command: v.string(),
+    params: v.optional(v.any()),
+    outcome: v.union(
+      v.literal("accepted"),
+      v.literal("rejected"),
+      v.literal("error")
+    ),
+    requestedBy: v.string(),
+    requestedAt: v.number(),
+    ackedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_agent", ["agentId", "requestedAt"])
+    .index("by_requested_by", ["requestedBy", "requestedAt"])
+    .index("by_operation", ["operationId"])
+    .index("by_bulk", ["bulkId", "requestedAt"]),
+
+  /**
    * Messages - Conversation messages (denormalized for fast queries)
    */
   messages: defineTable({
