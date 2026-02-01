@@ -15,6 +15,7 @@ import { GatewayClient, parsePresencePayload } from "./gateway-client";
 import type {
   BridgeConfig,
   BridgeEvent,
+  GatewayConnectionState,
   GatewayEvent,
   HelloOkFrame,
   AgentStatusUpdate,
@@ -141,6 +142,17 @@ function loadConfig(): BridgeConfig {
 
 function resolveString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function resolveRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object") {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function resolveNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function resolveAgentId(payload: unknown, fallback: string): string {
@@ -271,6 +283,12 @@ type ControlAck = {
   requestId: string;
   status: "accepted" | "rejected" | "error";
   error?: string;
+};
+
+type HealthResponse = {
+  status: "ok" | "degraded";
+  timestamp: string;
+  gateway: GatewayConnectionState & { health?: unknown };
 };
 
 type ActivitySnapshot = {
@@ -408,7 +426,6 @@ class Bridge {
       console.warn(
         "[bridge] BRIDGE_CONTROL_SECRET not set; control endpoint disabled"
       );
-      return;
     }
 
     const port = parseNumber(
@@ -417,7 +434,7 @@ class Bridge {
     );
 
     this.controlServer = http.createServer((req, res) => {
-      void this.handleControlRequest(req, res, secret);
+      void this.handleHttpRequest(req, res, secret);
     });
 
     this.controlServer.on("error", (error) => {
@@ -427,6 +444,68 @@ class Bridge {
     this.controlServer.listen(port, () => {
       console.log(`[bridge] control endpoint listening on :${port}`);
     });
+  }
+
+  private async handleHttpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    secret: string | null
+  ): Promise<void> {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === "/api/health" || url.pathname === "/health") {
+      await this.handleHealthRequest(req, res, secret);
+      return;
+    }
+    if (url.pathname === "/api/control") {
+      if (!secret) {
+        res.statusCode = 503;
+        res.end("Control endpoint disabled");
+        return;
+      }
+      await this.handleControlRequest(req, res, secret);
+      return;
+    }
+    res.statusCode = 404;
+    res.end("Not found");
+  }
+
+  private async handleHealthRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    secret: string | null
+  ): Promise<void> {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.statusCode = 405;
+      res.end("Method not allowed");
+      return;
+    }
+
+    const providedSecret = secret ? resolveControlHeader(req.headers) : null;
+    const includeGatewayHealth = Boolean(secret && providedSecret === secret);
+    const gatewayState = this.gateway.getConnectionState();
+    const response: HealthResponse = {
+      status: gatewayState.connected ? "ok" : "degraded",
+      timestamp: new Date().toISOString(),
+      gateway: { ...gatewayState },
+    };
+
+    if (includeGatewayHealth && gatewayState.connected) {
+      try {
+        response.gateway.health = await this.gateway.healthCheck();
+      } catch (error) {
+        response.status = "degraded";
+        response.gateway.lastError =
+          error instanceof Error ? error.message : "Gateway health check failed";
+      }
+    }
+
+    res.statusCode = response.status === "ok" ? 200 : 503;
+    res.setHeader("content-type", "application/json");
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    res.end(JSON.stringify(response));
   }
 
   private normalizeAgentId(value: string | null | undefined): string | null {
@@ -616,10 +695,9 @@ class Bridge {
     res: http.ServerResponse,
     secret: string
   ): Promise<void> {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    if (req.method !== "POST" || url.pathname !== "/api/control") {
-      res.statusCode = 404;
-      res.end("Not found");
+    if (req.method !== "POST") {
+      res.statusCode = 405;
+      res.end("Method not allowed");
       return;
     }
 
@@ -748,7 +826,13 @@ class Bridge {
       void this.handleHealthSnapshot(frame.payload);
     }
     const event = this.normalizeGatewayEvent(frame);
-    const shouldFlush = this.buffer.add(event);
+    const derivedEvents = this.buildDerivedEvents(frame, event);
+    let shouldFlush = this.buffer.add(event);
+    for (const derived of derivedEvents) {
+      if (this.buffer.add(derived)) {
+        shouldFlush = true;
+      }
+    }
     if (shouldFlush) {
       void this.flushEvents();
     }
@@ -776,6 +860,140 @@ class Bridge {
       sequence: frame.seq ?? this.nextSequence(),
       payload: normalizedPayload,
     };
+  }
+
+  private buildDerivedEvents(
+    frame: GatewayEvent,
+    baseEvent: BridgeEvent
+  ): BridgeEvent[] {
+    if (frame.event !== "agent") {
+      return [];
+    }
+
+    const payloadRecord = resolveRecord(frame.payload);
+    if (!payloadRecord) {
+      return [];
+    }
+
+    const status = resolveString(payloadRecord.status);
+    const runId =
+      resolveString(payloadRecord.runId) ?? resolveString(payloadRecord.run_id);
+    const delta = resolveRecord(payloadRecord.delta);
+    const summary = resolveRecord(payloadRecord.summary);
+    const deltaType = delta ? resolveString(delta.type) : null;
+
+    const buildDerived = (eventType: string, payload: Record<string, unknown>): BridgeEvent => {
+      return {
+        eventId: randomUUID(),
+        eventType,
+        agentId: baseEvent.agentId,
+        sessionKey: baseEvent.sessionKey,
+        timestamp: baseEvent.timestamp,
+        sequence: this.nextSequence(),
+        payload,
+        sourceEventId: baseEvent.eventId,
+        sourceEventType: baseEvent.eventType,
+        runId,
+      };
+    };
+
+    const derived: BridgeEvent[] = [];
+
+    if (deltaType === "tool_call") {
+      const toolName =
+        resolveString(delta?.toolName) ??
+        resolveString(delta?.tool_name) ??
+        resolveString(payloadRecord.toolName) ??
+        resolveString(payloadRecord.tool_name);
+      const toolInput =
+        delta?.toolInput ??
+        delta?.tool_input ??
+        payloadRecord.toolInput ??
+        payloadRecord.tool_input;
+      const payload: Record<string, unknown> = {
+        toolName,
+        toolInput,
+        status,
+      };
+      derived.push(buildDerived("tool_call", payload));
+    }
+
+    if (deltaType === "tool_result") {
+      const toolName =
+        resolveString(delta?.toolName) ??
+        resolveString(delta?.tool_name) ??
+        resolveString(payloadRecord.toolName) ??
+        resolveString(payloadRecord.tool_name);
+      const toolOutput =
+        delta?.toolOutput ??
+        delta?.tool_output ??
+        payloadRecord.toolOutput ??
+        payloadRecord.tool_output;
+      const payload: Record<string, unknown> = {
+        toolName,
+        toolOutput,
+        status,
+      };
+      derived.push(buildDerived("tool_result", payload));
+    }
+
+    const thinkingText =
+      resolveString(payloadRecord.thinking) ??
+      resolveString(payloadRecord.thought) ??
+      resolveString(payloadRecord.reasoning) ??
+      resolveString(delta?.content);
+    const shouldEmitThinking =
+      deltaType === "thinking" || Boolean(thinkingText) || (status === "started" && !delta);
+    if (shouldEmitThinking) {
+      const payload: Record<string, unknown> = {
+        status,
+      };
+      if (thinkingText) {
+        payload.thinking = thinkingText;
+      }
+      derived.push(buildDerived("thinking", payload));
+    }
+
+    const errorMessage =
+      resolveString(payloadRecord.error) ??
+      resolveString(payloadRecord.errorMessage) ??
+      (status === "error" ? resolveString(payloadRecord.message) : null);
+    if (status === "error" || errorMessage) {
+      const payload: Record<string, unknown> = {
+        status,
+      };
+      if (errorMessage) {
+        payload.message = errorMessage;
+      }
+      derived.push(buildDerived("error", payload));
+    }
+
+    const inputTokens =
+      resolveNumber(payloadRecord.inputTokens) ??
+      resolveNumber(payloadRecord.input_tokens) ??
+      resolveNumber(summary?.inputTokens) ??
+      resolveNumber(summary?.input_tokens);
+    const outputTokens =
+      resolveNumber(payloadRecord.outputTokens) ??
+      resolveNumber(payloadRecord.output_tokens) ??
+      resolveNumber(summary?.outputTokens) ??
+      resolveNumber(summary?.output_tokens);
+    const durationMs =
+      resolveNumber(payloadRecord.durationMs) ??
+      resolveNumber(payloadRecord.duration_ms) ??
+      resolveNumber(summary?.durationMs) ??
+      resolveNumber(summary?.duration_ms);
+    if (inputTokens !== null || outputTokens !== null || durationMs !== null) {
+      const payload: Record<string, unknown> = {
+        status,
+      };
+      if (inputTokens !== null) payload.inputTokens = inputTokens;
+      if (outputTokens !== null) payload.outputTokens = outputTokens;
+      if (durationMs !== null) payload.durationMs = durationMs;
+      derived.push(buildDerived("token_usage", payload));
+    }
+
+    return derived;
   }
 
   private trackSessionActivity(frame: GatewayEvent): void {

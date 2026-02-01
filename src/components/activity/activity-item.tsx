@@ -11,11 +11,16 @@ const typeTone: Record<string, string> = {
   presence: "border-indigo-500/30 bg-indigo-500/10 text-indigo-200",
   health: "border-rose-500/30 bg-rose-500/10 text-rose-200",
   heartbeat: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+  tool_call: "border-orange-500/30 bg-orange-500/10 text-orange-200",
+  tool_result: "border-lime-500/30 bg-lime-500/10 text-lime-200",
+  thinking: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
+  error: "border-red-500/30 bg-red-500/10 text-red-200",
+  token_usage: "border-teal-500/30 bg-teal-500/10 text-teal-200",
 };
 
 function formatEventType(eventType: string): string {
   return eventType
-    .replace(/_/g, " ")
+    .replace(/[_\.]/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 

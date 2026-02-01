@@ -179,7 +179,7 @@ export default function DashboardPage() {
     ? fallbackPulse
     : (recentEvents ?? []).map((event: PulseEvent) => ({
         id: event._id ?? event.createdAt ?? event.type,
-        title: event.type.replace("_", " "),
+        title: event.type.replace(/[_\.]/g, " "),
         detail: event.content,
         timeLabel: formatRelativeTime(event.createdAt, "just now"),
       }));

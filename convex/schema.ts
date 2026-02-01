@@ -181,6 +181,9 @@ export default defineSchema({
     timestamp: v.string(),
     sequence: v.number(),
     payload: v.any(),
+    sourceEventId: v.optional(v.string()),
+    sourceEventType: v.optional(v.string()),
+    runId: v.optional(v.string()),
     receivedAt: v.number(), // Convex server time
   })
     .index("by_agent", ["agentId", "timestamp"])

@@ -85,9 +85,20 @@ describe("events functions", () => {
       payload: { delta: { content: "Two" } },
       receivedAt: Date.now(),
     });
+    await ctx.db.insert("events", {
+      eventId: "evt_3",
+      eventType: "error",
+      agentId: "agent_2",
+      sessionKey: "session_2",
+      timestamp: new Date().toISOString(),
+      sequence: 3,
+      payload: { message: "Failure" },
+      receivedAt: Date.now(),
+    });
 
     const counts = await asHandler(events.countsByType)._handler(ctx, { since: Date.now() - 500 });
     expect(counts.agent).toBe(1);
+    expect(counts.error).toBe(1);
   });
 
   it("summarizes payload shapes into content", async () => {
@@ -144,6 +155,26 @@ describe("events functions", () => {
       payload: circular,
       receivedAt: Date.now(),
     });
+    await ctx.db.insert("events", {
+      eventId: "evt_tool",
+      eventType: "tool_call",
+      agentId: "agent_6",
+      sessionKey: "session_6",
+      timestamp: new Date().toISOString(),
+      sequence: 6,
+      payload: { toolName: "search", toolInput: { q: "help" } },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_usage",
+      eventType: "token_usage",
+      agentId: "agent_7",
+      sessionKey: "session_7",
+      timestamp: new Date().toISOString(),
+      sequence: 7,
+      payload: { inputTokens: 120, outputTokens: 80, durationMs: 1530 },
+      receivedAt: Date.now(),
+    });
 
     const recent = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
     const contents = recent.map((event: { content: string }) => event.content);
@@ -157,6 +188,8 @@ describe("events functions", () => {
         "agent",
       ])
     );
+    expect(contents.some((content) => content.startsWith("Tool call"))).toBe(true);
+    expect(contents.some((content) => content.includes("tokens"))).toBe(true);
   });
 
   it("stores events idempotently", async () => {

@@ -76,6 +76,9 @@ export type BridgeEvent = {
   timestamp: string;
   sequence: number;
   payload: unknown;
+  sourceEventId?: string;
+  sourceEventType?: string;
+  runId?: string;
 };
 
 export type BridgeConfig = {
@@ -89,4 +92,14 @@ export type BridgeConfig = {
   batchIntervalMs: number;
   requestTimeoutMs: number;
   agentIdAliases: Record<string, string>;
+};
+
+export type GatewayConnectionState = {
+  connected: boolean;
+  readyState: number | null;
+  reconnecting: boolean;
+  reconnectAttempts: number;
+  lastConnectedAt?: string;
+  lastDisconnectedAt?: string;
+  lastError?: string;
 };
