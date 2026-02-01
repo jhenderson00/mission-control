@@ -16,15 +16,15 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 const middleware = hasClerkKeys
-  ? clerkMiddleware(async (auth, req) => {
-      if (isPublicRoute(req)) return;
-      if (isProtectedRoute(req)) {
-        await auth.protect({
-          unauthenticatedUrl: signInUrl,
-          unauthorizedUrl: signUpUrl,
-        });
-      }
-    })
+  ? clerkMiddleware(
+      async (auth, req) => {
+        if (isPublicRoute(req)) return;
+        if (isProtectedRoute(req)) {
+          await auth.protect();
+        }
+      },
+      { signInUrl, signUpUrl }
+    )
   : () => NextResponse.next();
 
 export default middleware;
