@@ -1,18 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { ControlPanel } from "@/components/agents/control-panel";
 
 vi.mock("convex/react", () => ({
   useAction: vi.fn(),
+  useQuery: vi.fn(),
 }));
 
 const useActionMock = vi.mocked(useAction);
+const useQueryMock = vi.mocked(useQuery);
 
 describe("ControlPanel", () => {
   beforeEach(() => {
     useActionMock.mockReset();
+    useQueryMock.mockReset();
+    useQueryMock.mockReturnValue([]);
   });
 
   it("dispatches pause with a reason", async () => {
@@ -29,11 +33,13 @@ describe("ControlPanel", () => {
     await user.click(screen.getByRole("button", { name: "Pause" }));
 
     await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledWith({
-        agentId: "agent_1",
-        command: "agent.pause",
-        params: { reason: "Need a break" },
-      });
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "agent_1",
+          command: "agent.pause",
+          params: { reason: "Need a break" },
+        })
+      );
     });
 
     expect(await screen.findByText("Acknowledged (acked)."))
@@ -61,12 +67,43 @@ describe("ControlPanel", () => {
     render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Redirect" }));
+    await user.click(screen.getByRole("button", { name: "Redirect task" }));
+    await user.click(screen.getByRole("button", { name: "Dispatch redirect" }));
 
     expect(
       await screen.findByText("Redirect requires a task ID.")
     ).toBeInTheDocument();
     expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it("dispatches redirect using the task selector", async () => {
+    const dispatchMock = vi.fn().mockResolvedValue({ ok: true, status: "acked" });
+    useActionMock.mockReturnValue(dispatchMock);
+    useQueryMock.mockReturnValue([
+      {
+        _id: "task_123",
+        title: "Investigate breach",
+        status: "queued",
+        priority: "high",
+      },
+    ]);
+
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Redirect task" }));
+    await user.click(screen.getByRole("option", { name: /Investigate breach/i }));
+    await user.click(screen.getByRole("button", { name: "Dispatch redirect" }));
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "agent_1",
+          command: "agent.redirect",
+          params: { taskId: "task_123", priority: undefined },
+        })
+      );
+    });
   });
 
   it("requires a priority override selection", async () => {
