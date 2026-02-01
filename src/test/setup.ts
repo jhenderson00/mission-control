@@ -73,6 +73,10 @@ vi.mock("@/convex/_generated/api", () => ({
       listRecent: "events.listRecent",
       listByAgent: "events.listByAgent",
     },
+    audit: {
+      listByAgent: "audit.listByAgent",
+      listRecent: "audit.listRecent",
+    },
     conversations: {
       listBySession: "conversations.listBySession",
     },

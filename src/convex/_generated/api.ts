@@ -37,6 +37,10 @@ export const api = {
     listRecent: makeFunctionReference<"query">("events:listRecent"),
     countsByType: makeFunctionReference<"query">("events:countsByType"),
   },
+  audit: {
+    listByAgent: makeFunctionReference<"query">("audit:listByAgent"),
+    listRecent: makeFunctionReference<"query">("audit:listRecent"),
+  },
   conversations: {
     listBySession: makeFunctionReference<"query">("conversations:listBySession"),
   },

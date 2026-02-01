@@ -14,12 +14,12 @@ import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type AuditLogProps = {
-  audits: Array<Doc<"agentControlAudits">>;
+  audits: Array<Doc<"auditLog">>;
   isLoading: boolean;
 };
 
 const outcomeStyles: Record<
-  Doc<"agentControlAudits">["outcome"],
+  Doc<"auditLog">["outcome"],
   { label: string; className: string }
 > = {
   accepted: { label: "Accepted", className: "text-emerald-300 bg-emerald-400/10" },
@@ -58,12 +58,17 @@ export function AuditLog({ audits, isLoading }: AuditLogProps): React.ReactEleme
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="uppercase tracking-wide text-muted-foreground">
-                    {audit.requestedBy}
+                    {audit.action}
                   </span>
                   <span>{formatRelativeTime(audit.requestedAt, "just now")}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-sm text-foreground">{audit.command}</p>
+                  <div>
+                    <p className="text-sm text-foreground">{audit.command}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Requested by {audit.requestedBy}
+                    </p>
+                  </div>
                   <Badge
                     variant="outline"
                     className={cn("text-[10px] uppercase", outcome.className)}
