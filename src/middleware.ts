@@ -20,7 +20,10 @@ const middleware = hasClerkKeys
       async (auth, req) => {
         if (isPublicRoute(req)) return;
         if (isProtectedRoute(req)) {
-          await auth.protect();
+          const { isAuthenticated, redirectToSignIn } = await auth();
+          if (!isAuthenticated) {
+            return redirectToSignIn({ returnBackUrl: req.url });
+          }
         }
       },
       { signInUrl, signUpUrl }
