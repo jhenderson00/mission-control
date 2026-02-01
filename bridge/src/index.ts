@@ -1,6 +1,15 @@
 import { randomUUID } from "crypto";
 import http from "http";
 import { ConvexClient } from "./convex-client";
+import {
+  buildGatewayActions,
+  ControlCommand,
+  ControlValidationError,
+  executeGatewayActions,
+  parseControlPayload,
+  ParsedControlPayload,
+  resolveSessionKeyForAgent,
+} from "./control-commands";
 import { EventBuffer } from "./event-buffer";
 import { GatewayClient, parsePresencePayload } from "./gateway-client";
 import type {
@@ -162,13 +171,6 @@ function resolveSessionKey(payload: unknown): string | undefined {
   return undefined;
 }
 
-function resolveSessionKeyForAgent(
-  agentId: string,
-  params: Record<string, unknown>
-): string {
-  return resolveString(params.sessionKey) ?? `agent:${agentId}:main`;
-}
-
 function resolveEventId(payload: unknown): string {
   if (payload && typeof payload === "object") {
     const record = payload as Record<string, unknown>;
@@ -265,10 +267,6 @@ function resolveControlHeader(headers: http.IncomingHttpHeaders): string | null 
   return null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 type ControlAck = {
   requestId: string;
   status: "accepted" | "rejected" | "error";
@@ -279,130 +277,6 @@ type ActivitySnapshot = {
   lastActivity: number;
   sessionKey?: string;
 };
-
-type ParsedControlPayload = {
-  agentId?: string;
-  agentIds?: string[];
-  command: ControlCommand;
-  params: Record<string, unknown>;
-  requestId?: string;
-  requestedBy?: string;
-};
-
-type ControlCommand =
-  | "pause"
-  | "resume"
-  | "redirect"
-  | "kill"
-  | "restart"
-  | "priority";
-
-class ControlValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ControlValidationError";
-  }
-}
-
-function normalizeCommand(command: string): ControlCommand | null {
-  switch (command) {
-    case "pause":
-    case "resume":
-    case "redirect":
-    case "kill":
-    case "restart":
-    case "priority":
-      return command;
-    case "agent.pause":
-      return "pause";
-    case "agent.resume":
-      return "resume";
-    case "agent.redirect":
-      return "redirect";
-    case "agent.kill":
-      return "kill";
-    case "agent.restart":
-      return "restart";
-    case "agent.priority.override":
-    case "agent.priority":
-      return "priority";
-    default:
-      return null;
-  }
-}
-
-function normalizeAgentIds(value: unknown): string[] | null {
-  if (!Array.isArray(value) || value.length === 0) {
-    return null;
-  }
-  const agentIds = value.filter((id) => typeof id === "string" && id.length > 0);
-  return agentIds.length === value.length ? agentIds : null;
-}
-
-function parseControlPayload(payload: unknown): ParsedControlPayload {
-  if (!isRecord(payload)) {
-    throw new ControlValidationError("Invalid control payload");
-  }
-
-  const rawCommand = resolveString(payload.command) ?? resolveString(payload.method);
-  const rawParams = payload.params;
-  if (rawParams !== undefined && !isRecord(rawParams)) {
-    throw new ControlValidationError("Invalid params");
-  }
-  const params = isRecord(rawParams) ? rawParams : {};
-  const requestedBy = resolveString(payload.requestedBy);
-  const requestId =
-    resolveString(payload.requestId) ?? resolveString(params.requestId);
-
-  if (!rawCommand) {
-    throw new ControlValidationError("Invalid control command");
-  }
-
-  if (rawCommand === "agents.bulk") {
-    const nestedCommandRaw = resolveString(params.command);
-    const nestedCommand = nestedCommandRaw
-      ? normalizeCommand(nestedCommandRaw)
-      : null;
-    const agentIds = normalizeAgentIds(params.agentIds);
-    const nestedParams = isRecord(params.params) ? params.params : {};
-    const nestedRequestId = resolveString(params.requestId) ?? requestId;
-
-    if (!nestedCommand) {
-      throw new ControlValidationError("Invalid bulk command");
-    }
-    if (!agentIds) {
-      throw new ControlValidationError("Invalid bulk agentIds");
-    }
-
-    return {
-      agentIds,
-      command: nestedCommand,
-      params: nestedParams,
-      requestId: nestedRequestId ?? undefined,
-      requestedBy: requestedBy ?? undefined,
-    };
-  }
-
-  const command = normalizeCommand(rawCommand);
-  if (!command) {
-    throw new ControlValidationError("Unsupported control command");
-  }
-
-  const agentId =
-    resolveString(payload.agentId) ?? resolveString(params.agentId);
-
-  if (!agentId) {
-    throw new ControlValidationError("Missing agentId");
-  }
-
-  return {
-    agentId,
-    command,
-    params,
-    requestId: requestId ?? undefined,
-    requestedBy: requestedBy ?? undefined,
-  };
-}
 
 async function readJsonBody(
   req: http.IncomingMessage
@@ -839,66 +713,26 @@ class Bridge {
     requestId: string
   ): Promise<ControlAck> {
     const sessionKey = resolveSessionKeyForAgent(agentId, params);
+    const actions = buildGatewayActions(command, params, sessionKey);
+    await executeGatewayActions(this.gateway, actions);
 
     switch (command) {
-      case "pause": {
-        await this.gateway.send(sessionKey, "/stop");
+      case "pause":
         this.pausedAgents.add(agentId);
         void this.updateManualStatus(agentId, "paused", sessionKey);
-        return { requestId, status: "accepted" };
-      }
-      case "resume": {
-        const text =
-          resolveString(params.text) ??
-          resolveString(params.message) ??
-          "Resume work";
-        await this.gateway.call("cron.wake", { text, mode: "now" });
+        break;
+      case "resume":
+      case "redirect":
+      case "restart":
         this.pausedAgents.delete(agentId);
         void this.updateManualStatus(agentId, "busy", sessionKey);
-        return { requestId, status: "accepted" };
-      }
-      case "redirect": {
-        const payload =
-          params.taskPayload ?? params.text ?? params.message ?? params.task;
-        if (payload === undefined) {
-          throw new ControlValidationError("Missing task payload");
-        }
-        let message: string;
-        if (typeof payload === "string") {
-          message = payload;
-        } else {
-          const serialized = JSON.stringify(payload);
-          message = serialized ?? String(payload);
-        }
-        await this.gateway.send(sessionKey, message);
-        this.pausedAgents.delete(agentId);
-        void this.updateManualStatus(agentId, "busy", sessionKey);
-        return { requestId, status: "accepted" };
-      }
-      case "kill": {
-        await this.gateway.send(sessionKey, "/stop");
-        await this.gateway.send(sessionKey, "/reset");
-        return { requestId, status: "accepted" };
-      }
-      case "restart": {
-        await this.gateway.send(sessionKey, "/new");
-        this.pausedAgents.delete(agentId);
-        void this.updateManualStatus(agentId, "busy", sessionKey);
-        return { requestId, status: "accepted" };
-      }
-      case "priority": {
-        const priority =
-          resolveString(params.priority) ??
-          (typeof params.priority === "number"
-            ? String(params.priority)
-            : null);
-        if (!priority) {
-          throw new ControlValidationError("Missing priority");
-        }
-        await this.gateway.send(sessionKey, `/queue priority:${priority}`);
-        return { requestId, status: "accepted" };
-      }
+        break;
+      case "kill":
+      case "priority":
+        break;
     }
+
+    return { requestId, status: "accepted" };
   }
 
   private handleGatewayEvent(frame: GatewayEvent): void {
