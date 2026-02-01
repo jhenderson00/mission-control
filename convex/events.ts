@@ -41,10 +41,69 @@ function normalizeTimestamp(value: string, fallback: number): number {
 }
 
 function summarizePayload(eventType: string, payload: unknown): string {
+  // Handle string payloads
   if (typeof payload === "string") {
     // Try to parse stringified JSON content
     try {
       const parsed = JSON.parse(payload);
+      if (parsed && typeof parsed === "object") {
+        return summarizePayload(eventType, parsed);
+      }
+    } catch {
+      // Not JSON, return as-is
+    }
+    return payload;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return eventType;
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  // Handle specific event types with human-readable summaries
+  switch (eventType) {
+    case "health": {
+      const agents = record.agents as Array<{ agentId?: string }> | undefined;
+      const ok = record.ok;
+      if (agents?.length) {
+        const agentIds = agents.map((a) => a.agentId || "unknown").join(", ");
+        return `Gateway ${ok ? "healthy" : "unhealthy"}: ${agents.length} agent(s) [${agentIds}]`;
+      }
+      return `Gateway health check: ${ok ? "OK" : "ERROR"}`;
+    }
+    case "presence": {
+      const presence = record.presence as Array<{ host?: string; mode?: string; reason?: string }> | undefined;
+      if (presence?.length) {
+        const connected = presence.filter((p) => p.reason === "connect").length;
+        const disconnected = presence.filter((p) => p.reason === "disconnect").length;
+        return `Presence update: ${connected} connected, ${disconnected} disconnected`;
+      }
+      return "Presence update";
+    }
+    case "connect.challenge":
+      return "Authentication challenge";
+    case "connect.auth":
+      return "Authentication response";
+    case "connect.welcome":
+      return "Connection established";
+    case "session.start":
+      return `Session started: ${record.sessionKey || "unknown"}`;
+    case "session.end":
+      return `Session ended: ${record.sessionKey || "unknown"}`;
+  }
+
+  // Try to extract text content from nested structures
+  if (record.data && typeof record.data === "object") {
+    const data = record.data as Record<string, unknown>;
+    if (typeof data.text === "string") return data.text;
+    if (typeof data.delta === "string") return data.delta;
+  }
+
+  if (typeof record.content === "string") {
+    // Try to parse stringified JSON content
+    try {
+      const parsed = JSON.parse(record.content);
       if (parsed && typeof parsed === "object") {
         const obj = parsed as Record<string, unknown>;
         if (obj.data && typeof obj.data === "object") {
@@ -56,42 +115,30 @@ function summarizePayload(eventType: string, payload: unknown): string {
     } catch {
       // Not JSON, return as-is
     }
-    return payload;
+    return record.content;
   }
-  if (payload && typeof payload === "object") {
-    const record = payload as Record<string, unknown>;
-    if (typeof record.content === "string") {
-      // Try to parse stringified JSON content
-      try {
-        const parsed = JSON.parse(record.content);
-        if (parsed && typeof parsed === "object") {
-          const obj = parsed as Record<string, unknown>;
-          if (obj.data && typeof obj.data === "object") {
-            const data = obj.data as Record<string, unknown>;
-            if (typeof data.text === "string") return data.text;
-            if (typeof data.delta === "string") return data.delta;
-          }
-        }
-      } catch {
-        // Not JSON, return as-is
-      }
-      return record.content;
-    }
-    if (record.delta && typeof record.delta === "object") {
-      const delta = record.delta as Record<string, unknown>;
-      if (typeof delta.content === "string") {
-        return delta.content;
-      }
-    }
-    if (typeof record.status === "string") {
-      return record.status;
+
+  if (record.delta && typeof record.delta === "object") {
+    const delta = record.delta as Record<string, unknown>;
+    if (typeof delta.content === "string") {
+      return delta.content;
     }
   }
-  try {
-    return JSON.stringify(payload);
-  } catch {
-    return eventType;
+
+  if (typeof record.status === "string") {
+    return record.status;
   }
+
+  if (typeof record.message === "string") {
+    return record.message;
+  }
+
+  if (typeof record.text === "string") {
+    return record.text;
+  }
+
+  // Fallback: return event type rather than raw JSON dump
+  return eventType;
 }
 
 function normalizeEvent(event: {
