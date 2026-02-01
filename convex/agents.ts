@@ -183,6 +183,27 @@ export const get = query({
 });
 
 /**
+ * Get agent status by ID (from agentStatus table)
+ * Used by /agents/[id] detail pages
+ */
+export const getStatus = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    // Try agentStatus table first (most common - linked from grid)
+    const statusId = ctx.db.normalizeId("agentStatus", args.id);
+    if (statusId) {
+      return await ctx.db.get(statusId);
+    }
+    // Fallback: try agents table
+    const agentId = ctx.db.normalizeId("agents", args.id);
+    if (agentId) {
+      return await ctx.db.get(agentId);
+    }
+    return null;
+  },
+});
+
+/**
  * Get agents with their current tasks
  */
 export const listWithTasks = query({

@@ -94,7 +94,7 @@ export default function AgentDetailPage({
   const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const agentId = params.id as Id<"agents">;
 
-  const agent = useQuery(api.agents.get, { id: agentId });
+  const agent = useQuery(api.agents.getStatus, { id: agentId });
   const events = useQuery(api.events.listByAgent, { agentId });
   const decisions = useQuery(api.decisions.listByAgent, { agentId });
   const operations = useQuery(
