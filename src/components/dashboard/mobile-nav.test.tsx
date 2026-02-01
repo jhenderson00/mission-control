@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
+
+vi.mock("convex/react", () => ({
+  useQuery: vi.fn(),
+}));
 
 declare global {
   var __setMockPathname: (path: string) => void;

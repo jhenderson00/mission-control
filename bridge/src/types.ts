@@ -18,6 +18,7 @@ export type GatewayResponse = {
   id: string;
   ok: boolean;
   result?: unknown;
+  payload?: unknown;
   error?: {
     message?: string;
     code?: string | number;
@@ -28,12 +29,25 @@ export type HelloOkFrame = {
   type: "hello-ok";
   presence?: unknown;
   health?: unknown;
+  features?: {
+    methods?: string[];
+    events?: string[];
+    [key: string]: unknown;
+  };
+  snapshot?: {
+    presence?: unknown;
+    health?: unknown;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
 };
 
 export type GatewayFrame = GatewayEvent | GatewayResponse | HelloOkFrame;
 
 export type PresenceEntry = {
   deviceId: string;
+  agentId?: string;
+  sessionKey?: string;
   roles?: string[];
   scopes?: string[];
   connectedAt?: string;
@@ -74,4 +88,5 @@ export type BridgeConfig = {
   batchSize: number;
   batchIntervalMs: number;
   requestTimeoutMs: number;
+  agentIdAliases: Record<string, string>;
 };

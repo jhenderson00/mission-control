@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { z } from "zod";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import { query, mutation, internalMutation, httpAction } from "./_generated/server";
 
@@ -220,15 +220,51 @@ export const listStatus = query({
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentStatus">>> => {
     if (args.agentIds && args.agentIds.length > 0) {
+      // Look up agents to get their bridgeAgentId mappings
+      const agents = await Promise.all(
+        args.agentIds.map(async (id) => {
+          try {
+            return await ctx.db.get(id as Id<"agents">);
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      // Build map of bridgeAgentId -> convexAgentId for response mapping
+      const bridgeToConvex = new Map<string, string>();
+      const bridgeIds: string[] = [];
+      
+      for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
+        const convexId = args.agentIds[i];
+        if (agent?.bridgeAgentId) {
+          bridgeIds.push(agent.bridgeAgentId);
+          bridgeToConvex.set(agent.bridgeAgentId, convexId);
+        } else {
+          // Fallback: try using convexId directly as bridgeAgentId
+          bridgeIds.push(convexId);
+        }
+      }
+
+      // Query status by bridgeAgentIds
       const results = await Promise.all(
-        args.agentIds.map((agentId) =>
+        bridgeIds.map((bridgeId) =>
           ctx.db
             .query("agentStatus")
-            .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+            .withIndex("by_agent", (q) => q.eq("agentId", bridgeId))
             .take(1)
         )
       );
-      return results.flat();
+
+      // Map results back to convex agent IDs for UI consistency
+      return results.flat().map((status) => {
+        const convexId = bridgeToConvex.get(status.agentId);
+        if (convexId) {
+          return { ...status, agentId: convexId };
+        }
+        return status;
+      });
     }
 
     return await ctx.db.query("agentStatus").collect();
@@ -435,5 +471,21 @@ export const updateStatusFromEvent = internalMutation({
         { preservePaused: true, preserveBusy: true }
       );
     }
+  },
+});
+
+/**
+ * Update an agent's bridgeAgentId mapping.
+ */
+export const setBridgeAgentId = mutation({
+  args: {
+    id: v.id("agents"),
+    bridgeAgentId: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.id, {
+      bridgeAgentId: args.bridgeAgentId,
+      updatedAt: Date.now(),
+    });
   },
 });

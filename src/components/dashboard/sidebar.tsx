@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -14,43 +16,46 @@ import {
   Activity,
 } from "lucide-react";
 
-const navItems = [
-  {
-    href: "/",
-    label: "Dashboard",
-    description: "Fleet status & mission pulse",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/agents",
-    label: "Agents",
-    description: "Operators, roles, availability",
-    icon: Users,
-    badge: "12",
-  },
-  {
-    href: "/activity",
-    label: "Activity",
-    description: "Live agent actions & events",
-    icon: Activity,
-  },
-  {
-    href: "/tasks",
-    label: "Tasks",
-    description: "Queued missions & blockers",
-    icon: ListChecks,
-    badge: "27",
-  },
-  {
-    href: "/graph",
-    label: "Context Graph",
-    description: "Decisions & reasoning chains",
-    icon: Share2,
-  },
-];
-
 export function Sidebar() {
   const pathname = usePathname();
+  const agentCounts = useQuery(api.agents.statusCounts, {});
+  const taskCounts = useQuery(api.tasks.statusCounts, {});
+
+  const navItems = [
+    {
+      href: "/",
+      label: "Dashboard",
+      description: "Fleet status & mission pulse",
+      icon: LayoutDashboard,
+    },
+    {
+      href: "/agents",
+      label: "Agents",
+      description: "Operators, roles, availability",
+      icon: Users,
+      badge: agentCounts?.total ?? "—",
+    },
+    {
+      href: "/activity",
+      label: "Activity",
+      description: "Live agent actions & events",
+      icon: Activity,
+    },
+    {
+      href: "/tasks",
+      label: "Tasks",
+      description: "Queued missions & blockers",
+      icon: ListChecks,
+      badge: taskCounts?.queued ?? "—",
+    },
+    {
+      href: "/graph",
+      label: "Context Graph",
+      description: "Decisions & reasoning chains",
+      icon: Share2,
+    },
+  ];
+  const activeAgentCount = agentCounts?.active ?? "—";
 
   return (
     <aside className="hidden h-full flex-col border-r border-border/60 bg-card/20 px-6 py-8 backdrop-blur lg:flex">
@@ -104,7 +109,7 @@ export function Sidebar() {
                   >
                     {item.label}
                   </span>
-                  {item.badge && (
+                  {item.badge !== undefined && item.badge !== null && (
                     <Badge
                       variant={isActive ? "secondary" : "outline"}
                       className="ml-2 text-xs"
@@ -142,7 +147,7 @@ export function Sidebar() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Active agents</span>
-            <span className="text-foreground font-medium">3</span>
+            <span className="text-foreground font-medium">{activeAgentCount}</span>
           </div>
         </div>
       </div>

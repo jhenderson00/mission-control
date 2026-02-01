@@ -10,9 +10,13 @@ export class ConvexClient {
   private readonly statusUrl: string;
 
   constructor(private readonly options: ConvexClientOptions) {
-    const base = options.baseUrl.replace(/\/$/, "");
-    this.ingestUrl = `${base}/api/http/events/ingest`;
-    this.statusUrl = `${base}/api/http/agents/update-status`;
+    // Convex HTTP routes are on .convex.site, not .convex.cloud
+    // Accept either format and normalize to site URL
+    const base = options.baseUrl
+      .replace(/\/$/, "")
+      .replace(".convex.cloud", ".convex.site");
+    this.ingestUrl = `${base}/events/ingest`;
+    this.statusUrl = `${base}/agents/update-status`;
   }
 
   async ingestEvents(events: BridgeEvent[]): Promise<void> {

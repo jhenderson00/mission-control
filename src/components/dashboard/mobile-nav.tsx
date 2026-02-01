@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,39 +19,41 @@ import {
   Activity,
 } from "lucide-react";
 
-const navItems = [
-  {
-    href: "/",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/agents",
-    label: "Agents",
-    icon: Users,
-    badge: "12",
-  },
-  {
-    href: "/activity",
-    label: "Activity",
-    icon: Activity,
-  },
-  {
-    href: "/tasks",
-    label: "Tasks",
-    icon: ListChecks,
-    badge: "27",
-  },
-  {
-    href: "/graph",
-    label: "Graph",
-    icon: Share2,
-  },
-];
-
 export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+  const agentCounts = useQuery(api.agents.statusCounts, {});
+  const taskCounts = useQuery(api.tasks.statusCounts, {});
+
+  const navItems = [
+    {
+      href: "/",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+    },
+    {
+      href: "/agents",
+      label: "Agents",
+      icon: Users,
+      badge: agentCounts?.total ?? "—",
+    },
+    {
+      href: "/activity",
+      label: "Activity",
+      icon: Activity,
+    },
+    {
+      href: "/tasks",
+      label: "Tasks",
+      icon: ListChecks,
+      badge: taskCounts?.queued ?? "—",
+    },
+    {
+      href: "/graph",
+      label: "Graph",
+      icon: Share2,
+    },
+  ];
 
   return (
     <>
@@ -115,7 +119,7 @@ export function MobileNav() {
               >
                 <Icon className="h-5 w-5" />
                 <span className="flex-1 font-medium">{item.label}</span>
-                {item.badge && (
+                {item.badge !== undefined && item.badge !== null && (
                   <Badge variant="outline" className="text-xs">
                     {item.badge}
                   </Badge>

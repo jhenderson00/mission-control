@@ -22,12 +22,15 @@ GATEWAY_TOKEN=your-gateway-token
 CONVEX_URL=https://<deployment>.convex.cloud
 CONVEX_ACTION_SECRET=your-bridge-secret
 
-# Optional tuning
+# Optional tuning (set MAX_RECONNECT_ATTEMPTS=0 for unlimited retries)
 RECONNECT_INTERVAL_MS=5000
 MAX_RECONNECT_ATTEMPTS=10
 EVENT_BATCH_SIZE=10
 EVENT_BATCH_INTERVAL_MS=100
 REQUEST_TIMEOUT_MS=10000
+
+# Optional: agentId normalization (JSON or from=to pairs)
+BRIDGE_AGENT_ID_ALIASES={"cydni-main":"main"}
 ```
 
 The Convex HTTP action is registered at:

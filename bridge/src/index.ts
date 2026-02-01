@@ -44,6 +44,51 @@ function parseNumber(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseAgentIdAliases(
+  value: string | undefined
+): Record<string, string> {
+  if (!value) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const entries: Record<string, string> = {};
+      for (const [key, rawValue] of Object.entries(parsed)) {
+        if (typeof rawValue !== "string") {
+          continue;
+        }
+        const trimmedKey = key.trim();
+        const trimmedValue = rawValue.trim();
+        if (!trimmedKey || !trimmedValue) {
+          continue;
+        }
+        entries[trimmedKey] = trimmedValue;
+      }
+      if (Object.keys(entries).length > 0) {
+        return entries;
+      }
+    }
+  } catch {
+    // Fall through to delimiter-based parsing.
+  }
+
+  const aliases: Record<string, string> = {};
+  for (const pair of value.split(",")) {
+    const [fromRaw, toRaw] = pair.split("=");
+    if (!fromRaw || !toRaw) {
+      continue;
+    }
+    const from = fromRaw.trim();
+    const to = toRaw.trim();
+    if (!from || !to) {
+      continue;
+    }
+    aliases[from] = to;
+  }
+  return aliases;
+}
+
 function loadConfig(): BridgeConfig {
   const gatewayToken =
     process.env.OPENCLAW_GATEWAY_TOKEN ?? process.env.GATEWAY_TOKEN;
@@ -78,6 +123,9 @@ function loadConfig(): BridgeConfig {
     requestTimeoutMs: parseNumber(
       process.env.REQUEST_TIMEOUT_MS,
       DEFAULTS.requestTimeoutMs
+    ),
+    agentIdAliases: parseAgentIdAliases(
+      process.env.BRIDGE_AGENT_ID_ALIASES
     ),
   };
 }
@@ -330,8 +378,8 @@ function parseControlPayload(payload: unknown): ParsedControlPayload {
       agentIds,
       command: nestedCommand,
       params: nestedParams,
-      requestId: nestedRequestId,
-      requestedBy,
+      requestId: nestedRequestId ?? undefined,
+      requestedBy: requestedBy ?? undefined,
     };
   }
 
@@ -351,8 +399,8 @@ function parseControlPayload(payload: unknown): ParsedControlPayload {
     agentId,
     command,
     params,
-    requestId,
-    requestedBy,
+    requestId: requestId ?? undefined,
+    requestedBy: requestedBy ?? undefined,
   };
 }
 
@@ -392,6 +440,8 @@ class Bridge {
   private readonly gateway: GatewayClient;
   private readonly convex: ConvexClient;
   private readonly buffer: EventBuffer;
+  private readonly agentIdAliases: Record<string, string>;
+  private readonly logStatusSync: boolean;
   private controlServer?: http.Server;
   private flushTimer?: NodeJS.Timeout;
   private flushing = false;
@@ -408,6 +458,14 @@ class Bridge {
       secret: config.convexSecret,
     });
     this.buffer = new EventBuffer(config.batchSize);
+    this.agentIdAliases = config.agentIdAliases;
+    this.logStatusSync = process.env.BRIDGE_LOG_STATUS === "1";
+    if (Object.keys(this.agentIdAliases).length > 0) {
+      const mappings = Object.entries(this.agentIdAliases)
+        .map(([from, to]) => `${from} -> ${to}`)
+        .join(", ");
+      console.log(`[bridge] agentId aliases enabled: ${mappings}`);
+    }
   }
 
   async start(): Promise<void> {
@@ -431,9 +489,9 @@ class Bridge {
       process.exit(1);
     });
 
-    await this.gateway.connect();
     this.startFlushLoop();
     this.startControlServer();
+    await this.gateway.start();
   }
 
   private startFlushLoop(): void {
@@ -443,16 +501,28 @@ class Bridge {
   }
 
   private async onConnected(hello: HelloOkFrame | null): Promise<void> {
-    try {
-      await this.gateway.subscribe([
-        "agent",
-        "chat",
-        "heartbeat",
-        "health",
-      ]);
-      await this.gateway.subscribePresence();
-    } catch (error) {
-      console.error("[bridge] failed to subscribe to gateway", error);
+    console.log("[bridge] gateway connected");
+    const methods = Array.isArray(hello?.features?.methods)
+      ? hello?.features?.methods
+      : null;
+    const supportsSubscribe = methods ? methods.includes("subscribe") : true;
+
+    if (supportsSubscribe) {
+      try {
+        await this.gateway.subscribe([
+          "agent",
+          "chat",
+          "heartbeat",
+          "health",
+        ]);
+        await this.gateway.subscribePresence();
+      } catch (error) {
+        console.error("[bridge] failed to subscribe to gateway", error);
+      }
+    } else {
+      console.warn(
+        "[bridge] gateway does not advertise subscribe; skipping explicit subscriptions"
+      );
     }
 
     await this.initialSync(hello);
@@ -483,6 +553,188 @@ class Bridge {
     this.controlServer.listen(port, () => {
       console.log(`[bridge] control endpoint listening on :${port}`);
     });
+  }
+
+  private normalizeAgentId(value: string | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const alias = this.agentIdAliases[trimmed];
+    if (alias) {
+      return alias;
+    }
+    const fromSessionKey = agentIdFromSessionKey(trimmed);
+    if (fromSessionKey) {
+      return fromSessionKey;
+    }
+    return trimmed;
+  }
+
+  private resolvePresenceAgentId(entry: PresenceEntry): string {
+    const fromSessionKey = agentIdFromSessionKey(entry.sessionKey);
+    const candidate = fromSessionKey ?? entry.agentId ?? entry.deviceId;
+    return this.normalizeAgentId(candidate) ?? entry.deviceId;
+  }
+
+  private normalizePresencePayload(payload: unknown): unknown {
+    if (!payload || typeof payload !== "object") {
+      return payload;
+    }
+    const record = payload as Record<string, unknown>;
+    const entriesRaw = record.entries;
+    if (!Array.isArray(entriesRaw)) {
+      return payload;
+    }
+
+    let mutated = false;
+    const normalizedEntries = entriesRaw.map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return entry;
+      }
+      const entryRecord = entry as Record<string, unknown>;
+      const deviceId = resolveString(entryRecord.deviceId);
+      if (!deviceId) {
+        return entry;
+      }
+      const sessionKey =
+        resolveString(entryRecord.sessionKey) ??
+        resolveString(entryRecord.session_key);
+      const entryAgentId =
+        resolveString(entryRecord.agentId) ??
+        resolveString(entryRecord.agent_id);
+      const candidate =
+        agentIdFromSessionKey(sessionKey ?? undefined) ?? entryAgentId ?? deviceId;
+      const normalized = this.normalizeAgentId(candidate);
+      if (!normalized || normalized === deviceId) {
+        return entry;
+      }
+      mutated = true;
+      return {
+        ...entryRecord,
+        deviceId: normalized,
+        gatewayDeviceId: deviceId,
+      };
+    });
+
+    if (!mutated) {
+      return payload;
+    }
+
+    return {
+      ...record,
+      entries: normalizedEntries,
+    };
+  }
+
+  private buildHealthUpdates(payload: unknown): AgentStatusUpdate[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const agentsRaw = Array.isArray(record.agents) ? record.agents : null;
+    const eventTimestamp =
+      typeof record.ts === "number" && Number.isFinite(record.ts)
+        ? record.ts
+        : Date.now();
+    const updates: AgentStatusUpdate[] = [];
+
+    const pushUpdate = (agentIdRaw: string | null, sessionsRaw?: unknown) => {
+      if (!agentIdRaw) {
+        return;
+      }
+      const normalizedAgentId = this.normalizeAgentId(agentIdRaw) ?? agentIdRaw;
+      if (!normalizedAgentId) {
+        return;
+      }
+
+      let lastSeen = eventTimestamp;
+      let sessionKey: string | undefined;
+      if (sessionsRaw && typeof sessionsRaw === "object") {
+        const sessionsRecord = sessionsRaw as Record<string, unknown>;
+        const recentRaw = sessionsRecord.recent;
+        if (Array.isArray(recentRaw)) {
+          for (const session of recentRaw) {
+            if (!session || typeof session !== "object") {
+              continue;
+            }
+            const sessionRecord = session as Record<string, unknown>;
+            const updatedAt = sessionRecord.updatedAt;
+            if (typeof updatedAt === "number" && updatedAt > lastSeen) {
+              lastSeen = updatedAt;
+              sessionKey = resolveString(sessionRecord.key) ?? sessionKey;
+            }
+          }
+        }
+      }
+
+      const activity: ActivitySnapshot = { lastActivity: lastSeen, sessionKey };
+      const existing = this.recentActivity.get(normalizedAgentId);
+      if (!existing || lastSeen > existing.lastActivity) {
+        this.recentActivity.set(normalizedAgentId, activity);
+      }
+      const status = this.resolvePresenceStatus(
+        normalizedAgentId,
+        lastSeen,
+        this.recentActivity.get(normalizedAgentId)
+      );
+      updates.push({
+        agentId: normalizedAgentId,
+        status,
+        lastSeen,
+        sessionInfo: {
+          source: "health",
+          sessionKey,
+          lastSeen,
+        },
+      });
+    };
+
+    if (agentsRaw && agentsRaw.length > 0) {
+      for (const agent of agentsRaw) {
+        if (!agent || typeof agent !== "object") {
+          continue;
+        }
+        const agentRecord = agent as Record<string, unknown>;
+        const agentId =
+          resolveString(agentRecord.agentId) ?? resolveString(agentRecord.id);
+        pushUpdate(agentId, agentRecord.sessions);
+      }
+      return updates;
+    }
+
+    const fallbackAgentId = resolveString(record.defaultAgentId);
+    if (fallbackAgentId) {
+      pushUpdate(fallbackAgentId, record.sessions);
+    }
+
+    return updates;
+  }
+
+  private async handleHealthSnapshot(payload: unknown): Promise<void> {
+    const updates = this.buildHealthUpdates(payload);
+    if (updates.length === 0) {
+      return;
+    }
+
+    try {
+      await this.convex.updateAgentStatuses(updates);
+      if (this.logStatusSync) {
+        const preview = updates
+          .slice(0, 5)
+          .map((update) => `${update.agentId}:${update.status}`)
+          .join(", ");
+        const suffix = updates.length > 5 ? "..." : "";
+        console.log(
+          `[bridge] health sync (${updates.length}): ${preview}${suffix}`
+        );
+      }
+    } catch (error) {
+      console.error("[bridge] failed to update health statuses", error);
+    }
   }
 
   private async handleControlRequest(
@@ -658,6 +910,9 @@ class Bridge {
     this.lastEventTime = now;
 
     this.trackSessionActivity(frame);
+    if (frame.event === "health") {
+      void this.handleHealthSnapshot(frame.payload);
+    }
     const event = this.normalizeGatewayEvent(frame);
     const shouldFlush = this.buffer.add(event);
     if (shouldFlush) {
@@ -668,10 +923,15 @@ class Bridge {
   private normalizeGatewayEvent(frame: GatewayEvent): BridgeEvent {
     const payload = frame.payload;
     const sessionKey = resolveSessionKey(payload);
-    const agentId =
+    const rawAgentId =
       frame.event === "presence"
         ? "system"
         : resolveAgentId(payload, "unknown");
+    const agentId = this.normalizeAgentId(rawAgentId) ?? rawAgentId;
+    const normalizedPayload =
+      frame.event === "presence"
+        ? this.normalizePresencePayload(payload)
+        : payload;
 
     return {
       eventId: resolveEventId(payload),
@@ -680,7 +940,7 @@ class Bridge {
       sessionKey,
       timestamp: resolveTimestamp(payload),
       sequence: frame.seq ?? this.nextSequence(),
-      payload,
+      payload: normalizedPayload,
     };
   }
 
@@ -691,8 +951,9 @@ class Bridge {
 
     const payload = frame.payload;
     const sessionKey = resolveSessionKey(payload);
-    const agentId =
+    const rawAgentId =
       agentIdFromSessionKey(sessionKey) ?? resolveAgentId(payload, "");
+    const agentId = this.normalizeAgentId(rawAgentId);
 
     if (!agentId) {
       return;
@@ -752,7 +1013,7 @@ class Bridge {
     const updates: AgentStatusUpdate[] = [];
 
     for (const entry of snapshot.entries) {
-      const agentId = entry.deviceId;
+      const agentId = this.resolvePresenceAgentId(entry);
       nextPresence.add(agentId);
 
       const lastSeen = parseTimestampMs(
@@ -798,6 +1059,16 @@ class Bridge {
 
     try {
       await this.convex.updateAgentStatuses(updates);
+      if (this.logStatusSync) {
+        const preview = updates
+          .slice(0, 5)
+          .map((update) => `${update.agentId}:${update.status}`)
+          .join(", ");
+        const suffix = updates.length > 5 ? "..." : "";
+        console.log(
+          `[bridge] status sync (${updates.length}): ${preview}${suffix}`
+        );
+      }
     } catch (error) {
       console.error("[bridge] failed to update agent statuses", error);
     }
@@ -845,21 +1116,31 @@ class Bridge {
   private async initialSync(hello: HelloOkFrame | null): Promise<void> {
     const syncEvents: BridgeEvent[] = [];
 
-    if (hello?.presence) {
-      syncEvents.push(this.buildSyncEvent("presence", "system", hello.presence));
-      const snapshot = parsePresencePayload(hello.presence);
+    const helloPresence = hello?.presence ?? hello?.snapshot?.presence;
+    const helloHealth = hello?.health ?? hello?.snapshot?.health;
+
+    if (helloPresence) {
+      const normalizedPresence = this.normalizePresencePayload(helloPresence);
+      syncEvents.push(
+        this.buildSyncEvent("presence", "system", normalizedPresence)
+      );
+      const snapshot = parsePresencePayload(normalizedPresence);
       if (snapshot) {
         await this.handlePresenceSnapshot(snapshot);
       }
     }
-    if (hello?.health) {
-      syncEvents.push(this.buildSyncEvent("health", "system", hello.health));
+    if (helloHealth) {
+      syncEvents.push(this.buildSyncEvent("health", "system", helloHealth));
+      await this.handleHealthSnapshot(helloHealth);
     }
 
     const presence = await this.safeRequest("system-presence");
     if (presence) {
-      syncEvents.push(this.buildSyncEvent("presence", "system", presence));
-      const snapshot = parsePresencePayload(presence);
+      const normalizedPresence = this.normalizePresencePayload(presence);
+      syncEvents.push(
+        this.buildSyncEvent("presence", "system", normalizedPresence)
+      );
+      const snapshot = parsePresencePayload(normalizedPresence);
       if (snapshot) {
         await this.handlePresenceSnapshot(snapshot);
       }
@@ -877,7 +1158,8 @@ class Bridge {
           limit: DEFAULTS.historyLimit,
         });
         if (history) {
-          const agentId = agentIdFromSession(session) ?? "system";
+          const rawAgentId = agentIdFromSession(session) ?? "system";
+          const agentId = this.normalizeAgentId(rawAgentId) ?? rawAgentId;
           syncEvents.push(
             this.buildSyncEvent("chat", agentId, { messages: history }, sessionKey)
           );

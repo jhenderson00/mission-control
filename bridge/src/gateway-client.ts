@@ -40,9 +40,15 @@ function parsePresenceEntry(value: unknown): PresenceEntry | null {
   if (!deviceId) {
     return null;
   }
+  const agentId =
+    resolveString(record.agentId) ?? resolveString(record.agent_id);
+  const sessionKey =
+    resolveString(record.sessionKey) ?? resolveString(record.session_key);
 
   return {
     deviceId,
+    agentId,
+    sessionKey,
     roles: resolveStringArray(record.roles),
     scopes: resolveStringArray(record.scopes),
     connectedAt: resolveString(record.connectedAt),
@@ -78,6 +84,7 @@ export class GatewayClient extends EventEmitter {
   private reconnecting = false;
   private allowReconnect = true;
   private helloSnapshot: ConnectSnapshot = null;
+  private pendingChallengeNonce: string | null = null;
 
   constructor(private readonly config: BridgeConfig) {
     super();
@@ -85,10 +92,20 @@ export class GatewayClient extends EventEmitter {
 
   async connect(): Promise<void> {
     this.helloSnapshot = null;
+    this.pendingChallengeNonce = null;
     await this.openSocket();
     await this.authenticate();
     this.reconnectAttempts = 0;
     this.emit("connected", this.helloSnapshot);
+  }
+
+  async start(): Promise<void> {
+    try {
+      await this.connect();
+    } catch (error) {
+      this.emit("error", error as Error);
+      this.scheduleReconnect();
+    }
   }
 
   async call(method: string, params?: unknown): Promise<unknown> {
@@ -166,17 +183,26 @@ export class GatewayClient extends EventEmitter {
   }
 
   private async authenticate(): Promise<void> {
-    const result = await this.request("connect", {
+    // Wait for connect.challenge event from gateway
+    const nonce = await this.waitForChallenge();
+
+    const baseParams = {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: "mission-control-bridge",
+        id: "gateway-client",
         version: "1.0.0",
         platform: "node",
-        mode: "operator",
+        mode: "backend",
       },
       role: "operator",
       scopes: ["operator.read"],
+    };
+
+    // Connect after challenge; gateway token auth does not accept nonce in params.
+    void nonce;
+    const result = await this.request("connect", {
+      ...baseParams,
       auth: { token: this.config.gatewayToken },
     });
 
@@ -191,6 +217,44 @@ export class GatewayClient extends EventEmitter {
     }
 
     throw new Error("Gateway connect handshake failed");
+  }
+
+  private waitForChallenge(): Promise<string> {
+    const cached = this.pendingChallengeNonce;
+    if (cached) {
+      this.pendingChallengeNonce = null;
+      return Promise.resolve(cached);
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const handler = (nonce: string) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        this.removeListener("challenge", handler);
+        resolve(nonce);
+      };
+
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.removeListener("challenge", handler);
+        reject(new Error("Timeout waiting for connect.challenge"));
+      }, this.config.requestTimeoutMs);
+
+      this.on("challenge", handler);
+
+      const late = this.pendingChallengeNonce;
+      if (late && !settled) {
+        this.pendingChallengeNonce = null;
+        handler(late);
+      }
+    });
   }
 
   private handleMessage(data: WebSocket.RawData): void {
@@ -209,7 +273,9 @@ export class GatewayClient extends EventEmitter {
         clearTimeout(pending.timeout);
         this.pending.delete(response.id);
         if (response.ok) {
-          pending.resolve(response.result);
+          const payload =
+            response.result !== undefined ? response.result : response.payload;
+          pending.resolve(payload);
         } else {
           pending.reject(new Error(response.error?.message ?? "Gateway error"));
         }
@@ -218,9 +284,18 @@ export class GatewayClient extends EventEmitter {
     }
 
     if (frame.type === "event") {
-      this.emit("event", frame as GatewayEvent);
-      if ((frame as GatewayEvent).event === "presence") {
-        const snapshot = parsePresencePayload((frame as GatewayEvent).payload);
+      const event = frame as GatewayEvent;
+      if (event.event === "connect.challenge") {
+        const payload = event.payload as { nonce?: string } | undefined;
+        const nonce = payload?.nonce;
+        if (nonce) {
+          this.pendingChallengeNonce = nonce;
+          this.emit("challenge", nonce);
+        }
+      }
+      this.emit("event", event);
+      if (event.event === "presence") {
+        const snapshot = parsePresencePayload(event.payload);
         if (snapshot) {
           this.emit("presence", snapshot);
         }
@@ -258,7 +333,8 @@ export class GatewayClient extends EventEmitter {
     if (this.reconnecting) {
       return;
     }
-    if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
+    const maxAttempts = this.config.maxReconnectAttempts;
+    if (maxAttempts > 0 && this.reconnectAttempts >= maxAttempts) {
       this.emit("fatal", new Error("Max reconnect attempts exceeded"));
       return;
     }
