@@ -179,7 +179,12 @@ export default function AgentDetailPage({
         title={agentData.name}
         description={`Model ${agentData.model} · ${agentData.host.toUpperCase()} node`}
         badge={agentData.status === "active" ? "Live" : agentData.status}
-        titleAccessory={<HeartbeatIndicator status={heartbeatStatus} />}
+        titleAccessory={
+          /* Only show heartbeat when it indicates a problem (offline/paused) */
+          (heartbeatStatus === "offline" || heartbeatStatus === "paused")
+            ? <HeartbeatIndicator status={heartbeatStatus} />
+            : undefined
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">

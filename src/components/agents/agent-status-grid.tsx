@@ -167,10 +167,13 @@ function AgentCard({
                   {agent.status}
                 </span>
               </div>
-              <HeartbeatIndicator
-                status={heartbeatStatus}
-                className="text-[9px] px-1.5 py-0"
-              />
+              {/* Only show heartbeat when it indicates a problem (offline/paused) */}
+              {(heartbeatStatus === "offline" || heartbeatStatus === "paused") && (
+                <HeartbeatIndicator
+                  status={heartbeatStatus}
+                  className="text-[9px] px-1.5 py-0"
+                />
+              )}
             </div>
           </div>
         </CardHeader>
