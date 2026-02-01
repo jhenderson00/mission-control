@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 const hasClerkKeys = Boolean(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
 );
-const signInUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL ?? "/sign-in";
+const signInUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL || "/sign-in";
+const signUpUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL || "/sign-up";
 
 const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 const isProtectedRoute = createRouteMatcher([
@@ -20,7 +21,7 @@ const middleware = hasClerkKeys
       if (isProtectedRoute(req)) {
         await auth.protect({
           unauthenticatedUrl: signInUrl,
-          unauthorizedUrl: signInUrl,
+          unauthorizedUrl: signUpUrl,
         });
       }
     })
