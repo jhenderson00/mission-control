@@ -4,6 +4,7 @@ import type {
   BridgeConfig,
   GatewayEvent,
   GatewayFrame,
+  GatewayConnectionState,
   GatewayRequest,
   GatewayResponse,
   HelloOkFrame,
@@ -85,6 +86,9 @@ export class GatewayClient extends EventEmitter {
   private allowReconnect = true;
   private helloSnapshot: ConnectSnapshot = null;
   private pendingChallengeNonce: string | null = null;
+  private lastConnectedAt: string | null = null;
+  private lastDisconnectedAt: string | null = null;
+  private lastError: Error | null = null;
 
   constructor(private readonly config: BridgeConfig) {
     super();
@@ -93,9 +97,11 @@ export class GatewayClient extends EventEmitter {
   async connect(): Promise<void> {
     this.helloSnapshot = null;
     this.pendingChallengeNonce = null;
+    this.lastError = null;
     await this.openSocket();
     await this.authenticate();
     this.reconnectAttempts = 0;
+    this.lastConnectedAt = new Date().toISOString();
     this.emit("connected", this.helloSnapshot);
   }
 
@@ -118,6 +124,20 @@ export class GatewayClient extends EventEmitter {
 
   async healthCheck(): Promise<unknown> {
     return this.request("health");
+  }
+
+  getConnectionState(): GatewayConnectionState {
+    const readyState = this.ws ? this.ws.readyState : null;
+    const connected = readyState === WebSocket.OPEN;
+    return {
+      connected,
+      readyState,
+      reconnecting: this.reconnecting,
+      reconnectAttempts: this.reconnectAttempts,
+      lastConnectedAt: this.lastConnectedAt ?? undefined,
+      lastDisconnectedAt: this.lastDisconnectedAt ?? undefined,
+      lastError: this.lastError?.message,
+    };
   }
 
   async request(method: string, params?: unknown): Promise<unknown> {
@@ -183,8 +203,8 @@ export class GatewayClient extends EventEmitter {
   }
 
   private async authenticate(): Promise<void> {
-    // Wait for connect.challenge event from gateway
-    const nonce = await this.waitForChallenge();
+    // Wait briefly for connect.challenge event from gateway when present.
+    const nonce = await this.waitForChallenge(1000, true);
 
     const baseParams = {
       minProtocol: 3,
@@ -201,25 +221,71 @@ export class GatewayClient extends EventEmitter {
 
     // Connect after challenge; gateway token auth does not accept nonce in params.
     void nonce;
-    const result = await this.request("connect", {
+    const connectParams = {
       ...baseParams,
       auth: { token: this.config.gatewayToken },
-    });
+    };
 
-    if (isHelloOkFrame(result)) {
-      this.helloSnapshot = result;
-      this.emit("hello", result);
+    const connectAttempt = this.request("connect", connectParams)
+      .then((result) => ({ kind: "connect" as const, result }))
+      .catch((error) => ({ kind: "connect-error" as const, error }));
+
+    const helloAttempt = this.waitForHello()
+      .then((result) => ({ kind: "hello" as const, result }))
+      .catch((error) => ({ kind: "hello-error" as const, error }));
+
+    const first = await Promise.race([connectAttempt, helloAttempt]);
+    let second:
+      | Awaited<typeof connectAttempt>
+      | Awaited<typeof helloAttempt>
+      | null = null;
+
+    let hello =
+      first.kind === "hello"
+        ? first.result
+        : first.kind === "connect"
+          ? extractHelloOk(first.result)
+          : null;
+
+    if (!hello) {
+      second =
+        first.kind === "hello" || first.kind === "hello-error"
+          ? await connectAttempt
+          : await helloAttempt;
+      hello =
+        second.kind === "hello"
+          ? second.result
+          : second.kind === "connect"
+            ? extractHelloOk(second.result)
+            : null;
+    }
+
+    if (hello) {
+      this.helloSnapshot = hello;
+      this.emit("hello", hello);
       return;
     }
 
-    if (this.helloSnapshot) {
-      return;
+    const error =
+      first.kind === "connect-error"
+        ? first.error
+        : first.kind === "hello-error"
+          ? first.error
+          : second?.kind === "connect-error"
+            ? second.error
+            : second?.kind === "hello-error"
+              ? second.error
+              : null;
+    if (error instanceof Error) {
+      throw error;
     }
-
     throw new Error("Gateway connect handshake failed");
   }
 
-  private waitForChallenge(): Promise<string> {
+  private waitForChallenge(
+    timeoutMs = this.config.requestTimeoutMs,
+    optional = false
+  ): Promise<string | null> {
     const cached = this.pendingChallengeNonce;
     if (cached) {
       this.pendingChallengeNonce = null;
@@ -244,8 +310,12 @@ export class GatewayClient extends EventEmitter {
         }
         settled = true;
         this.removeListener("challenge", handler);
+        if (optional) {
+          resolve(null);
+          return;
+        }
         reject(new Error("Timeout waiting for connect.challenge"));
-      }, this.config.requestTimeoutMs);
+      }, timeoutMs);
 
       this.on("challenge", handler);
 
@@ -254,6 +324,37 @@ export class GatewayClient extends EventEmitter {
         this.pendingChallengeNonce = null;
         handler(late);
       }
+    });
+  }
+
+  private waitForHello(): Promise<HelloOkFrame> {
+    const cached = this.helloSnapshot;
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const handler = (frame: HelloOkFrame) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        this.removeListener("hello", handler);
+        resolve(frame);
+      };
+
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.removeListener("hello", handler);
+        reject(new Error("Timeout waiting for hello-ok"));
+      }, this.config.requestTimeoutMs);
+
+      this.on("hello", handler);
     });
   }
 
@@ -310,6 +411,7 @@ export class GatewayClient extends EventEmitter {
   }
 
   private handleClose(): void {
+    this.lastDisconnectedAt = new Date().toISOString();
     this.emit("disconnected");
     this.rejectPending(new Error("Gateway connection closed"));
     if (this.allowReconnect) {
@@ -318,7 +420,15 @@ export class GatewayClient extends EventEmitter {
   }
 
   private handleError(error: Error): void {
+    this.lastError = error;
     this.emit("error", error);
+    if (!this.allowReconnect) {
+      return;
+    }
+    const ws = this.ws;
+    if (ws && ws.readyState !== WebSocket.CLOSED) {
+      ws.terminate();
+    }
   }
 
   private rejectPending(error: Error): void {
@@ -364,4 +474,21 @@ function isHelloOkFrame(payload: unknown): payload is HelloOkFrame {
     typeof payload === "object" &&
     (payload as { type?: string }).type === "hello-ok"
   );
+}
+
+function extractHelloOk(payload: unknown): HelloOkFrame | null {
+  if (isHelloOkFrame(payload)) {
+    return payload;
+  }
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as { result?: unknown; payload?: unknown };
+  if (isHelloOkFrame(record.result)) {
+    return record.result;
+  }
+  if (isHelloOkFrame(record.payload)) {
+    return record.payload;
+  }
+  return null;
 }

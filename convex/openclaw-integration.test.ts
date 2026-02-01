@@ -245,6 +245,20 @@ describe("OpenClaw command translation", () => {
       { type: "send", sessionKey, message: JSON.stringify({ task: "New work" }) },
     ]);
 
+    expect(
+      buildGatewayActions(
+        "redirect",
+        { taskId: "task_42", priority: "high" },
+        sessionKey
+      )
+    ).toEqual([
+      {
+        type: "send",
+        sessionKey,
+        message: JSON.stringify({ taskId: "task_42", priority: "high" }),
+      },
+    ]);
+
     expect(buildGatewayActions("kill", {}, sessionKey)).toEqual([
       { type: "send", sessionKey, message: "/stop" },
       { type: "send", sessionKey, message: "/reset" },
