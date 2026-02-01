@@ -475,7 +475,7 @@ export const upsertWorkingMemory = mutation({
       .take(1);
 
     const current = existing[0];
-    let recordId: string;
+    let recordId: Id<"agentWorkingMemory">;
     if (current) {
       await ctx.db.patch(current._id, workingMemory);
       recordId = current._id;
