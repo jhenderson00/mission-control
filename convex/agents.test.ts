@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as agents from "./agents";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler, asHttpAction } from "@/test/convex-test-utils";
 
 describe("agents functions", () => {
   beforeEach(() => {
@@ -35,8 +35,8 @@ describe("agents functions", () => {
       },
     ]);
 
-    const all = await agents.list._handler(ctx, {});
-    const active = await agents.list._handler(ctx, { status: "active" });
+    const all = await asHandler(agents.list)._handler(ctx, {});
+    const active = await asHandler(agents.list)._handler(ctx, { status: "active" });
 
     expect(all).toHaveLength(2);
     expect(active).toHaveLength(1);
@@ -55,7 +55,7 @@ describe("agents functions", () => {
       updatedAt: Date.now(),
     });
 
-    const agent = await agents.get._handler(ctx, { id: id as never });
+    const agent = await asHandler(agents.get)._handler(ctx, { id: id as never });
     expect(agent?.name).toBe("Gamma");
   });
 
@@ -82,7 +82,7 @@ describe("agents functions", () => {
       updatedAt: Date.now(),
     });
 
-    const result = await agents.listWithTasks._handler(ctx, {});
+    const result = await asHandler(agents.listWithTasks)._handler(ctx, {});
     expect(result[0].currentTask?.title).toBe("Task A");
   });
 
@@ -94,7 +94,7 @@ describe("agents functions", () => {
       { status: "idle" },
     ]);
 
-    const counts = await agents.statusCounts._handler(ctx, {});
+    const counts = await asHandler(agents.statusCounts)._handler(ctx, {});
     expect(counts.total).toBe(3);
     expect(counts.active).toBe(2);
     expect(counts.idle).toBe(1);
@@ -129,7 +129,7 @@ describe("agents functions", () => {
       },
     ]);
 
-    const counts = await agents.presenceCounts._handler(ctx, {});
+    const counts = await asHandler(agents.presenceCounts)._handler(ctx, {});
     expect(counts.total).toBe(3);
     expect(counts.online).toBe(1);
     expect(counts.busy).toBe(1);
@@ -140,7 +140,7 @@ describe("agents functions", () => {
 
   it("creates an agent", async () => {
     const ctx = createMockCtx();
-    const id = await agents.create._handler(ctx, {
+    const id = await asHandler(agents.create)._handler(ctx, {
       name: "Delta",
       type: "planner",
       model: "m4",
@@ -174,7 +174,7 @@ describe("agents functions", () => {
       currentTaskId: taskId,
     });
 
-    await agents.updateStatus._handler(ctx, {
+    await asHandler(agents.updateStatus)._handler(ctx, {
       id: id as never,
       status: "active",
     });
@@ -196,14 +196,14 @@ describe("agents functions", () => {
       updatedAt: Date.now(),
     });
 
-    await agents.remove._handler(ctx, { id: id as never });
+    await asHandler(agents.remove)._handler(ctx, { id: id as never });
     const removed = await ctx.db.get(id);
     expect(removed).toBeNull();
   });
 
   it("updates status from presence entries", async () => {
     const ctx = createMockCtx();
-    await agents.updateStatusFromEvent._handler(ctx, {
+    await asHandler(agents.updateStatusFromEvent)._handler(ctx, {
       eventId: "evt_presence",
       eventType: "presence",
       agentId: "agent_primary",
@@ -228,7 +228,7 @@ describe("agents functions", () => {
 
   it("updates status from heartbeat events", async () => {
     const ctx = createMockCtx();
-    await agents.updateStatusFromEvent._handler(ctx, {
+    await asHandler(agents.updateStatusFromEvent)._handler(ctx, {
       eventId: "evt_heartbeat",
       eventType: "heartbeat",
       agentId: "agent_heartbeat",
@@ -245,21 +245,21 @@ describe("agents functions", () => {
 
   it("updates presence status and clears sessions on offline", async () => {
     const ctx = createMockCtx();
-    await agents.updateAgentStatus._handler(ctx, {
+    await asHandler(agents.updateAgentStatus)._handler(ctx, {
       agentId: "agent_online",
       status: "online",
       lastSeen: Date.now(),
       sessionInfo: { sessionKey: "session_alpha" },
     });
 
-    await agents.updateAgentStatus._handler(ctx, {
+    await asHandler(agents.updateAgentStatus)._handler(ctx, {
       agentId: "agent_busy",
       status: "busy",
       lastSeen: Date.now(),
       sessionInfo: { session_id: "session_beta" },
     });
 
-    await agents.updateAgentStatus._handler(ctx, {
+    await asHandler(agents.updateAgentStatus)._handler(ctx, {
       agentId: "agent_online",
       status: "offline",
       lastSeen: Date.now() + 5000,
@@ -290,7 +290,7 @@ describe("agents functions", () => {
       lastActivity: Date.now(),
     });
 
-    await agents.updateStatusFromEvent._handler(ctx, {
+    await asHandler(agents.updateStatusFromEvent)._handler(ctx, {
       eventId: "evt_heartbeat_paused",
       eventType: "heartbeat",
       agentId: "agent_paused",
@@ -300,7 +300,7 @@ describe("agents functions", () => {
       payload: { status: "ok" },
     });
 
-    await agents.updateStatusFromEvent._handler(ctx, {
+    await asHandler(agents.updateStatusFromEvent)._handler(ctx, {
       eventId: "evt_heartbeat_busy",
       eventType: "heartbeat",
       agentId: "agent_busy",
@@ -339,7 +339,7 @@ describe("agents functions", () => {
       updatedAt: Date.now(),
     });
 
-    await agents.updateStatus._handler(ctx, {
+    await asHandler(agents.updateStatus)._handler(ctx, {
       id: id as never,
       status: "active",
       currentTaskId: taskId as never,
@@ -358,7 +358,7 @@ describe("agents functions", () => {
       lastActivity: Date.now(),
     });
 
-    await agents.upsertWorkingMemory._handler(ctx, {
+    await asHandler(agents.upsertWorkingMemory)._handler(ctx, {
       agentId: "agent_memory",
       currentTask: "Draft working memory doc",
       status: "in-progress",
@@ -379,7 +379,7 @@ describe("agents functions", () => {
       updatedAt: Date.now(),
     });
 
-    await agents.upsertWorkingMemory._handler(ctx, {
+    await asHandler(agents.upsertWorkingMemory)._handler(ctx, {
       agentId: "agent_memory",
       currentTask: "Finalize working memory doc",
       status: "review",
@@ -413,10 +413,10 @@ describe("agents functions", () => {
       },
     ]);
 
-    const all = await agents.listWorkingMemory._handler(ctx, {});
+    const all = await asHandler(agents.listWorkingMemory)._handler(ctx, {});
     expect(all).toHaveLength(2);
 
-    const filtered = await agents.listWorkingMemory._handler(ctx, {
+    const filtered = await asHandler(agents.listWorkingMemory)._handler(ctx, {
       agentIds: ["agent_alpha"],
     });
     expect(filtered).toHaveLength(1);
@@ -428,13 +428,13 @@ describe("agents functions", () => {
     process.env.BRIDGE_SECRET = "secret";
     const ctx = { runMutation: vi.fn(async () => {}) };
 
-    const unauthorized = await agents.updateAgentStatusHttp(
+    const unauthorized = await asHttpAction(agents.updateAgentStatusHttp)(
       ctx as never,
       new Request("https://example.test/status", { method: "POST", body: "{}" })
     );
     expect(unauthorized.status).toBe(401);
 
-    const invalidJson = await agents.updateAgentStatusHttp(
+    const invalidJson = await asHttpAction(agents.updateAgentStatusHttp)(
       ctx as never,
       new Request("https://example.test/status", {
         method: "POST",
@@ -444,7 +444,7 @@ describe("agents functions", () => {
     );
     expect(invalidJson.status).toBe(400);
 
-    const invalidPayload = await agents.updateAgentStatusHttp(
+    const invalidPayload = await asHttpAction(agents.updateAgentStatusHttp)(
       ctx as never,
       new Request("https://example.test/status", {
         method: "POST",
@@ -454,7 +454,7 @@ describe("agents functions", () => {
     );
     expect(invalidPayload.status).toBe(400);
 
-    const validPayload = await agents.updateAgentStatusHttp(
+    const validPayload = await asHttpAction(agents.updateAgentStatusHttp)(
       ctx as never,
       new Request("https://example.test/status", {
         method: "POST",
@@ -489,7 +489,7 @@ describe("agents functions", () => {
       runQuery: vi.fn(async () => [{ agentId: "agent_ok" }]),
     };
 
-    const unauthorizedPost = await agents.upsertWorkingMemoryHttp(
+    const unauthorizedPost = await asHttpAction(agents.upsertWorkingMemoryHttp)(
       ctx as never,
       new Request("https://example.test/agents/working-memory", {
         method: "POST",
@@ -498,7 +498,7 @@ describe("agents functions", () => {
     );
     expect(unauthorizedPost.status).toBe(401);
 
-    const invalidJson = await agents.upsertWorkingMemoryHttp(
+    const invalidJson = await asHttpAction(agents.upsertWorkingMemoryHttp)(
       ctx as never,
       new Request("https://example.test/agents/working-memory", {
         method: "POST",
@@ -508,7 +508,7 @@ describe("agents functions", () => {
     );
     expect(invalidJson.status).toBe(400);
 
-    const invalidPayload = await agents.upsertWorkingMemoryHttp(
+    const invalidPayload = await asHttpAction(agents.upsertWorkingMemoryHttp)(
       ctx as never,
       new Request("https://example.test/agents/working-memory", {
         method: "POST",
@@ -518,7 +518,7 @@ describe("agents functions", () => {
     );
     expect(invalidPayload.status).toBe(400);
 
-    const validPayload = await agents.upsertWorkingMemoryHttp(
+    const validPayload = await asHttpAction(agents.upsertWorkingMemoryHttp)(
       ctx as never,
       new Request("https://example.test/agents/working-memory", {
         method: "POST",
@@ -535,13 +535,13 @@ describe("agents functions", () => {
     expect(validPayload.status).toBe(200);
     expect(ctx.runMutation).toHaveBeenCalledTimes(1);
 
-    const unauthorizedGet = await agents.listWorkingMemoryHttp(
+    const unauthorizedGet = await asHttpAction(agents.listWorkingMemoryHttp)(
       ctx as never,
       new Request("https://example.test/agents/working-memory")
     );
     expect(unauthorizedGet.status).toBe(401);
 
-    const validGet = await agents.listWorkingMemoryHttp(
+    const validGet = await asHttpAction(agents.listWorkingMemoryHttp)(
       ctx as never,
       new Request("https://example.test/agents/working-memory?agentId=agent_ok", {
         headers: { authorization: "Bearer secret" },

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as events from "./events";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler, asHttpAction } from "@/test/convex-test-utils";
 
 describe("events functions", () => {
   beforeEach(() => {
@@ -26,7 +26,7 @@ describe("events functions", () => {
       receivedAt: Date.now(),
     });
 
-    const byAgent = await events.listByAgent._handler(ctx, { agentId });
+    const byAgent = await asHandler(events.listByAgent)._handler(ctx, { agentId });
 
     expect(byAgent).toHaveLength(1);
     expect(byAgent[0].content).toContain("Hello");
@@ -55,8 +55,8 @@ describe("events functions", () => {
       receivedAt: Date.now(),
     });
 
-    const all = await events.listRecent._handler(ctx, { limit: 10 });
-    const filtered = await events.listRecent._handler(ctx, { type: "heartbeat" });
+    const all = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
+    const filtered = await asHandler(events.listRecent)._handler(ctx, { type: "heartbeat" });
 
     expect(all).toHaveLength(2);
     expect(filtered).toHaveLength(1);
@@ -86,7 +86,7 @@ describe("events functions", () => {
       receivedAt: Date.now(),
     });
 
-    const counts = await events.countsByType._handler(ctx, { since: Date.now() - 500 });
+    const counts = await asHandler(events.countsByType)._handler(ctx, { since: Date.now() - 500 });
     expect(counts.agent).toBe(1);
   });
 
@@ -145,8 +145,8 @@ describe("events functions", () => {
       receivedAt: Date.now(),
     });
 
-    const recent = await events.listRecent._handler(ctx, { limit: 10 });
-    const contents = recent.map((event) => event.content);
+    const recent = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
+    const contents = recent.map((event: { content: string }) => event.content);
 
     expect(contents).toEqual(
       expect.arrayContaining([
@@ -161,7 +161,7 @@ describe("events functions", () => {
 
   it("stores events idempotently", async () => {
     const ctx = createMockCtx();
-    const id1 = await events.store._handler(ctx, {
+    const id1 = await asHandler(events.store)._handler(ctx, {
       eventId: "evt_idempotent",
       eventType: "agent",
       agentId: "agent_1",
@@ -170,7 +170,7 @@ describe("events functions", () => {
       sequence: 1,
       payload: { delta: { content: "One" } },
     });
-    const id2 = await events.store._handler(ctx, {
+    const id2 = await asHandler(events.store)._handler(ctx, {
       eventId: "evt_idempotent",
       eventType: "agent",
       agentId: "agent_1",
@@ -224,7 +224,7 @@ describe("events functions", () => {
       },
     ];
 
-    const response = await events.ingest(
+    const response = await asHttpAction(events.ingest)(
       ctx as never,
       new Request("https://example.test/ingest", {
         method: "POST",
@@ -239,14 +239,14 @@ describe("events functions", () => {
   it("rejects unauthorized or invalid ingest payloads", async () => {
     const originalSecret = process.env.BRIDGE_SECRET;
     process.env.BRIDGE_SECRET = "secret";
-    const unauthorized = await events.ingest(
+    const unauthorized = await asHttpAction(events.ingest)(
       { runMutation: vi.fn() } as never,
       new Request("https://example.test/ingest", { method: "POST", body: "{}" })
     );
     expect(unauthorized.status).toBe(401);
 
     process.env.BRIDGE_SECRET = "";
-    const invalid = await events.ingest(
+    const invalid = await asHttpAction(events.ingest)(
       { runMutation: vi.fn() } as never,
       new Request("https://example.test/ingest", { method: "POST", body: "{}" })
     );

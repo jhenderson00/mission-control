@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as decisions from "./decisions";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 describe("decisions functions", () => {
   beforeEach(() => {
@@ -42,8 +42,8 @@ describe("decisions functions", () => {
       createdAt: Date.now(),
     });
 
-    const byAgent = await decisions.listByAgent._handler(ctx, { agentId: agentId as never });
-    const byTask = await decisions.listByTask._handler(ctx, { taskId: taskId as never });
+    const byAgent = await asHandler(decisions.listByAgent)._handler(ctx, { agentId: agentId as never });
+    const byTask = await asHandler(decisions.listByTask)._handler(ctx, { taskId: taskId as never });
 
     expect(byAgent).toHaveLength(1);
     expect(byTask).toHaveLength(1);
@@ -66,8 +66,8 @@ describe("decisions functions", () => {
       createdAt: Date.now(),
     });
 
-    const all = await decisions.listRecent._handler(ctx, { limit: 10 });
-    const accepted = await decisions.listRecent._handler(ctx, { outcome: "accepted" });
+    const all = await asHandler(decisions.listRecent)._handler(ctx, { limit: 10 });
+    const accepted = await asHandler(decisions.listRecent)._handler(ctx, { outcome: "accepted" });
 
     expect(all).toHaveLength(2);
     expect(accepted).toHaveLength(1);
@@ -91,7 +91,7 @@ describe("decisions functions", () => {
       createdAt: Date.now(),
     });
 
-    const result = await decisions.getWithChain._handler(ctx, { id: childId as never });
+    const result = await asHandler(decisions.getWithChain)._handler(ctx, { id: childId as never });
     expect(result?.chain).toHaveLength(2);
     expect(result?.chain[0]._id).toBe(rootId);
   });
@@ -103,13 +103,13 @@ describe("decisions functions", () => {
       { outcome: "accepted" },
     ]);
 
-    const count = await decisions.pendingCount._handler(ctx, {});
+    const count = await asHandler(decisions.pendingCount)._handler(ctx, {});
     expect(count).toBe(1);
   });
 
   it("records and resolves decisions", async () => {
     const ctx = createMockCtx();
-    const id = await decisions.record._handler(ctx, {
+    const id = await asHandler(decisions.record)._handler(ctx, {
       agentId: "agent_1" as never,
       decision: "Do",
       reasoning: "Why",
@@ -118,7 +118,7 @@ describe("decisions functions", () => {
     let created = await ctx.db.get(id);
     expect(created?.outcome).toBe("pending");
 
-    await decisions.resolve._handler(ctx, { id: id as never, outcome: "accepted" });
+    await asHandler(decisions.resolve)._handler(ctx, { id: id as never, outcome: "accepted" });
     created = await ctx.db.get(id);
     expect(created?.outcome).toBe("accepted");
     expect(created?.decidedAt).toBe(Date.now());

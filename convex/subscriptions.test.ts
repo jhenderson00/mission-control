@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as subscriptions from "./subscriptions";
 import * as taskComments from "./taskComments";
 import * as tasks from "./tasks";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 describe("task subscription functions", () => {
   beforeEach(() => {
@@ -26,12 +26,12 @@ describe("task subscription functions", () => {
       updatedAt: Date.now(),
     });
 
-    const first = await subscriptions.subscribe._handler(ctx, {
+    const first = await asHandler(subscriptions.subscribe)._handler(ctx, {
       taskId: taskId as never,
       subscriberType: "user",
       subscriberId: "user_1",
     });
-    const second = await subscriptions.subscribe._handler(ctx, {
+    const second = await asHandler(subscriptions.subscribe)._handler(ctx, {
       taskId: taskId as never,
       subscriberType: "user",
       subscriberId: "user_1",
@@ -43,14 +43,14 @@ describe("task subscription functions", () => {
     const records = await ctx.db.query("taskSubscriptions").collect();
     expect(records).toHaveLength(1);
 
-    const subscribed = await subscriptions.isSubscribed._handler(ctx, {
+    const subscribed = await asHandler(subscriptions.isSubscribed)._handler(ctx, {
       taskId: taskId as never,
       subscriberType: "user",
       subscriberId: "user_1",
     });
     expect(subscribed).toBe(true);
 
-    const removal = await subscriptions.unsubscribe._handler(ctx, {
+    const removal = await asHandler(subscriptions.unsubscribe)._handler(ctx, {
       taskId: taskId as never,
       subscriberType: "user",
       subscriberId: "user_1",
@@ -82,7 +82,7 @@ describe("task subscription functions", () => {
       updatedAt: Date.now(),
     });
 
-    await tasks.assignAgents._handler(ctx, {
+    await asHandler(tasks.assignAgents)._handler(ctx, {
       id: taskId as never,
       agentIds: [agentId as never],
     });
@@ -110,7 +110,7 @@ describe("task subscription functions", () => {
       updatedAt: Date.now(),
     });
 
-    await taskComments.addComment._handler(ctx, {
+    await asHandler(taskComments.addComment)._handler(ctx, {
       taskId: taskId as never,
       body: "Looping in @user_2 and @agent:agent_1.",
       authorType: "user",

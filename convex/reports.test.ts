@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as reports from "./reports";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 describe("reports.dailyStandup", () => {
   beforeEach(() => {
@@ -121,7 +121,7 @@ describe("reports.dailyStandup", () => {
       decidedAt: dayStart - 2 * 60 * 60 * 1000,
     });
 
-    const report = await reports.dailyStandup._handler(ctx, {
+    const report = await asHandler(reports.dailyStandup)._handler(ctx, {
       date: "2026-02-01",
       timezoneOffsetMinutes: 0,
     });

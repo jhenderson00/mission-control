@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as tasks from "./tasks";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 describe("tasks functions", () => {
   beforeEach(() => {
@@ -20,8 +20,8 @@ describe("tasks functions", () => {
       { title: "C", status: "active" },
     ]);
 
-    const active = await tasks.list._handler(ctx, { status: "active" });
-    const limited = await tasks.list._handler(ctx, { limit: 1 });
+    const active = await asHandler(tasks.list)._handler(ctx, { status: "active" });
+    const limited = await asHandler(tasks.list)._handler(ctx, { limit: 1 });
 
     expect(active).toHaveLength(2);
     expect(limited).toHaveLength(1);
@@ -39,7 +39,7 @@ describe("tasks functions", () => {
       updatedAt: Date.now(),
     });
 
-    const task = await tasks.get._handler(ctx, { id: id as never });
+    const task = await asHandler(tasks.get)._handler(ctx, { id: id as never });
     expect(task?.title).toBe("Task X");
   });
 
@@ -51,7 +51,7 @@ describe("tasks functions", () => {
       { status: "completed" },
     ]);
 
-    const counts = await tasks.statusCounts._handler(ctx, {});
+    const counts = await asHandler(tasks.statusCounts)._handler(ctx, {});
     expect(counts.total).toBe(3);
     expect(counts.blocked).toBe(1);
     expect(counts.completed).toBe(1);
@@ -79,13 +79,13 @@ describe("tasks functions", () => {
       updatedAt: Date.now(),
     });
 
-    const result = await tasks.listWithAgents._handler(ctx, { limit: 10 });
+    const result = await asHandler(tasks.listWithAgents)._handler(ctx, { limit: 10 });
     expect(result[0].assignedAgents[0]?.name).toBe("Agent A");
   });
 
   it("creates a task", async () => {
     const ctx = createMockCtx();
-    const id = await tasks.create._handler(ctx, {
+    const id = await asHandler(tasks.create)._handler(ctx, {
       title: "Task New",
       requester: "system",
       priority: "medium",
@@ -108,11 +108,11 @@ describe("tasks functions", () => {
       updatedAt: Date.now(),
     });
 
-    await tasks.updateStatus._handler(ctx, { id: id as never, status: "active" });
+    await asHandler(tasks.updateStatus)._handler(ctx, { id: id as never, status: "active" });
     let updated = await ctx.db.get(id);
     expect(updated?.startedAt).toBe(Date.now());
 
-    await tasks.updateStatus._handler(ctx, { id: id as never, status: "completed" });
+    await asHandler(tasks.updateStatus)._handler(ctx, { id: id as never, status: "completed" });
     updated = await ctx.db.get(id);
     expect(updated?.completedAt).toBe(Date.now());
   });
@@ -139,7 +139,7 @@ describe("tasks functions", () => {
       updatedAt: Date.now(),
     });
 
-    await tasks.assignAgents._handler(ctx, { id: taskId as never, agentIds: [agentId as never] });
+    await asHandler(tasks.assignAgents)._handler(ctx, { id: taskId as never, agentIds: [agentId as never] });
     const updated = await ctx.db.get(taskId);
     expect(updated?.assignedAgentIds).toEqual([agentId]);
   });

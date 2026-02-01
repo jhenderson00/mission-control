@@ -2,7 +2,7 @@
 import http from "http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as controls from "./controls";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 import {
   buildGatewayActions,
   ControlValidationError,
@@ -148,13 +148,13 @@ function createActionCtx() {
   const base = createMockCtx();
   const runMutation = vi.fn(async (_mutation: unknown, args: Record<string, unknown>) => {
     if ("operationIds" in args) {
-      return controls.updateOperationStatus._handler(base, args as never);
+      return asHandler(controls.updateOperationStatus)._handler(base, args as never);
     }
     if ("outcome" in args) {
-      return controls.recordAudit._handler(base, args as never);
+      return asHandler(controls.recordAudit)._handler(base, args as never);
     }
     if ("operationId" in args && "requestedBy" in args) {
-      return controls.createOperation._handler(base, args as never);
+      return asHandler(controls.createOperation)._handler(base, args as never);
     }
     throw new Error("Unknown mutation args");
   });
@@ -301,12 +301,12 @@ describe("OpenClaw integration via mock gateway", () => {
   it("runs pause/resume cycle and records audits", async () => {
     const { ctx, base } = createActionCtx();
 
-    const pause = await controls.dispatch._handler(ctx as never, {
+    const pause = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.pause",
       requestId: "req_pause",
     });
-    const resume = await controls.dispatch._handler(ctx as never, {
+    const resume = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.resume",
       requestId: "req_resume",
@@ -332,12 +332,12 @@ describe("OpenClaw integration via mock gateway", () => {
   it("kills and restarts an agent", async () => {
     const { ctx } = createActionCtx();
 
-    await controls.dispatch._handler(ctx as never, {
+    await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_2",
       command: "agent.kill",
       requestId: "req_kill",
     });
-    await controls.dispatch._handler(ctx as never, {
+    await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_2",
       command: "agent.restart",
       requestId: "req_restart",
@@ -353,13 +353,13 @@ describe("OpenClaw integration via mock gateway", () => {
   it("redirects to a new task and sets priority", async () => {
     const { ctx } = createActionCtx();
 
-    await controls.dispatch._handler(ctx as never, {
+    await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_3",
       command: "agent.redirect",
       params: { taskPayload: { task: "Investigate anomaly" } },
       requestId: "req_redirect",
     });
-    await controls.dispatch._handler(ctx as never, {
+    await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_3",
       command: "agent.priority.override",
       params: { priority: "critical" },
@@ -383,7 +383,7 @@ describe("OpenClaw integration via mock gateway", () => {
   it("handles bulk pause/resume operations", async () => {
     const { ctx, base } = createActionCtx();
 
-    const pause = await controls.bulkDispatch._handler(ctx as never, {
+    const pause = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_a", "agent_b"],
       command: "agent.pause",
       requestId: "req_bulk_pause",
@@ -398,7 +398,7 @@ describe("OpenClaw integration via mock gateway", () => {
 
     gateway.reset();
 
-    const resume = await controls.bulkDispatch._handler(ctx as never, {
+    const resume = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_a", "agent_b"],
       command: "agent.resume",
       requestId: "req_bulk_resume",
@@ -419,7 +419,7 @@ describe("OpenClaw integration via mock gateway", () => {
     const { ctx, base } = createActionCtx();
     gateway.failWith(new Error("Gateway down"));
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_4",
       command: "agent.pause",
       requestId: "req_gateway_down",
@@ -437,7 +437,7 @@ describe("OpenClaw integration via mock gateway", () => {
     const { ctx } = createActionCtx();
     process.env.BRIDGE_CONTROL_SECRET = "wrong-secret";
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_5",
       command: "agent.pause",
       requestId: "req_auth_fail",
@@ -466,7 +466,7 @@ describe("OpenClaw end-to-end (real gateway)", () => {
       process.env.BRIDGE_CONTROL_SECRET = process.env.OPENCLAW_BRIDGE_SECRET;
 
       const agentId = process.env.OPENCLAW_E2E_AGENT_ID ?? "main";
-      const result = await controls.dispatch._handler(ctx as never, {
+      const result = await asHandler(controls.dispatch)._handler(ctx as never, {
         agentId,
         command: "agent.pause",
         requestId: `req_e2e_pause_${Date.now()}`,

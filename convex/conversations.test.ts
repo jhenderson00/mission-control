@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as conversations from "./conversations";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 describe("conversations functions", () => {
   beforeEach(() => {
@@ -32,7 +32,7 @@ describe("conversations functions", () => {
       },
     };
 
-    const firstId = await conversations.processAgentEvent._handler(ctx, baseEvent);
+    const firstId = await asHandler(conversations.processAgentEvent)._handler(ctx, baseEvent);
     const inserted = await ctx.db.query("messages").collect();
 
     expect(firstId).toBeTruthy();
@@ -40,7 +40,7 @@ describe("conversations functions", () => {
     expect(inserted[0].content).toBe("Hello");
     expect(inserted[0].isStreaming).toBe(true);
 
-    const updatedId = await conversations.processAgentEvent._handler(ctx, {
+    const updatedId = await asHandler(conversations.processAgentEvent)._handler(ctx, {
       ...baseEvent,
       payload: {
         ...baseEvent.payload,
@@ -55,7 +55,7 @@ describe("conversations functions", () => {
     expect(updated[0].content).toBe("Updated");
     expect(updated[0].isStreaming).toBe(false);
 
-    await conversations.processAgentEvent._handler(ctx, {
+    await asHandler(conversations.processAgentEvent)._handler(ctx, {
       ...baseEvent,
       sequence: 2,
       payload: {
@@ -72,7 +72,7 @@ describe("conversations functions", () => {
 
   it("processAgentEvent ignores invalid payloads", async () => {
     const ctx = createMockCtx();
-    const invalidPayload = await conversations.processAgentEvent._handler(ctx, {
+    const invalidPayload = await asHandler(conversations.processAgentEvent)._handler(ctx, {
       eventId: "evt_invalid",
       eventType: "agent",
       agentId: "agent_1",
@@ -82,7 +82,7 @@ describe("conversations functions", () => {
       payload: { nope: true },
     });
 
-    const missingDelta = await conversations.processAgentEvent._handler(ctx, {
+    const missingDelta = await asHandler(conversations.processAgentEvent)._handler(ctx, {
       eventId: "evt_missing",
       eventType: "agent",
       agentId: "agent_1",
@@ -99,7 +99,7 @@ describe("conversations functions", () => {
 
   it("processChatEvent normalizes messages and sequences", async () => {
     const ctx = createMockCtx();
-    const ids = await conversations.processChatEvent._handler(ctx, {
+    const ids = await asHandler(conversations.processChatEvent)._handler(ctx, {
       eventId: "evt_chat",
       eventType: "chat",
       agentId: "agent_1",
@@ -131,7 +131,7 @@ describe("conversations functions", () => {
 
   it("processChatEvent handles array payloads", async () => {
     const ctx = createMockCtx();
-    const ids = await conversations.processChatEvent._handler(ctx, {
+    const ids = await asHandler(conversations.processChatEvent)._handler(ctx, {
       eventId: "evt_array",
       eventType: "chat",
       agentId: "agent_2",
@@ -179,7 +179,7 @@ describe("conversations functions", () => {
       sequence: 3,
     });
 
-    const results = await conversations.listBySession._handler(ctx, {
+    const results = await asHandler(conversations.listBySession)._handler(ctx, {
       sessionKey: "session_1",
       limit: 1,
     });

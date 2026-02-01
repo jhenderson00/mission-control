@@ -1,5 +1,45 @@
 import { vi } from "vitest";
 
+/**
+ * Helper type for Convex functions with internal _handler property.
+ * Used for testing Convex functions directly.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ConvexFunctionWithHandler<TArgs = any, TResult = any> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _handler: (ctx: any, args: TArgs) => TResult;
+};
+
+/**
+ * Helper type for HTTP actions that can be called directly.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type HttpActionHandler = (ctx: any, request: Request) => Promise<Response>;
+
+/**
+ * Cast a Convex function to access its _handler for testing.
+ * This is a type-safe way to access internal Convex function handlers.
+ * 
+ * @example
+ * const result = await asHandler(myQuery)._handler(ctx, { id: "123" });
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function asHandler<TArgs = any, TResult = any>(
+  fn: unknown
+): ConvexFunctionWithHandler<TArgs, TResult> {
+  return fn as ConvexFunctionWithHandler<TArgs, TResult>;
+}
+
+/**
+ * Cast an HTTP action to be callable for testing.
+ * 
+ * @example
+ * const response = await asHttpAction(myHttpAction)(ctx, request);
+ */
+export function asHttpAction(fn: unknown): HttpActionHandler {
+  return fn as HttpActionHandler;
+}
+
 type TableName =
   | "agents"
   | "tasks"

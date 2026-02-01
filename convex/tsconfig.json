@@ -18,7 +18,13 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+
+    /* Path aliases for test utilities */
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["./**/*"],
   "exclude": ["./_generated"]

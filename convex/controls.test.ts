@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as controls from "./controls";
-import { createMockCtx } from "@/test/convex-test-utils";
+import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 const originalEnv = {
   BRIDGE_CONTROL_URL: process.env.BRIDGE_CONTROL_URL,
@@ -14,13 +14,13 @@ function createActionCtx() {
   const base = createMockCtx();
   const runMutation = vi.fn(async (_mutation: unknown, args: Record<string, unknown>) => {
     if ("operationIds" in args) {
-      return controls.updateOperationStatus._handler(base, args as never);
+      return asHandler(controls.updateOperationStatus)._handler(base, args as never);
     }
     if ("outcome" in args) {
-      return controls.recordAudit._handler(base, args as never);
+      return asHandler(controls.recordAudit)._handler(base, args as never);
     }
     if ("operationId" in args && "requestedBy" in args) {
-      return controls.createOperation._handler(base, args as never);
+      return asHandler(controls.createOperation)._handler(base, args as never);
     }
     throw new Error("Unknown mutation args");
   });
@@ -63,7 +63,7 @@ describe("controls", () => {
 
   it("creates and reuses operations", async () => {
     const ctx = createMockCtx();
-    const first = await controls.createOperation._handler(ctx, {
+    const first = await asHandler(controls.createOperation)._handler(ctx, {
       operationId: "op_1",
       requestId: "req_1",
       agentId: "agent_1",
@@ -74,7 +74,7 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    const second = await controls.createOperation._handler(ctx, {
+    const second = await asHandler(controls.createOperation)._handler(ctx, {
       operationId: "op_1",
       requestId: "req_1",
       agentId: "agent_1",
@@ -91,7 +91,7 @@ describe("controls", () => {
 
   it("updates operation status with optional fields", async () => {
     const ctx = createMockCtx();
-    const created = await controls.createOperation._handler(ctx, {
+    const created = await asHandler(controls.createOperation)._handler(ctx, {
       operationId: "op_2",
       requestId: "req_2",
       agentId: "agent_2",
@@ -102,7 +102,7 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    await controls.updateOperationStatus._handler(ctx, {
+    await asHandler(controls.updateOperationStatus)._handler(ctx, {
       operationIds: [created.id],
       status: "acked",
       ackedAt: 123,
@@ -119,7 +119,7 @@ describe("controls", () => {
 
   it("records audits", async () => {
     const ctx = createMockCtx();
-    const auditId = await controls.recordAudit._handler(ctx, {
+    const auditId = await asHandler(controls.recordAudit)._handler(ctx, {
       operationId: "op_3",
       requestId: "req_3",
       agentId: "agent_3",
@@ -138,7 +138,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_4", status: "accepted" });
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.pause",
       params: { reason: "break" },
@@ -154,7 +154,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_reject", status: "rejected", error: "nope" });
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.restart",
       requestId: "req_reject",
@@ -169,7 +169,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_error_ack", status: "error", error: "timeout" });
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.pause",
       requestId: "req_error_ack",
@@ -183,7 +183,7 @@ describe("controls", () => {
   it("throws on invalid redirect payload", async () => {
     const { ctx } = createActionCtx();
     await expect(
-      controls.dispatch._handler(ctx as never, {
+      asHandler(controls.dispatch)._handler(ctx as never, {
         agentId: "agent_1",
         command: "agent.redirect",
         params: {},
@@ -197,7 +197,7 @@ describe("controls", () => {
     process.env.BRIDGE_CONTROL_URL = "";
     mockBridgeResponse({ requestId: "req_missing", status: "accepted" });
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.pause",
       requestId: "req_missing",
@@ -213,7 +213,7 @@ describe("controls", () => {
     process.env.BRIDGE_SECRET = "";
     mockBridgeResponse({ requestId: "req_missing_secret", status: "accepted" });
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.pause",
       requestId: "req_missing_secret",
@@ -227,7 +227,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ foo: "bar" });
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.pause",
       requestId: "req_invalid_bridge",
@@ -239,7 +239,7 @@ describe("controls", () => {
 
   it("returns early for existing operations", async () => {
     const { ctx, base } = createActionCtx();
-    await controls.createOperation._handler(base, {
+    await asHandler(controls.createOperation)._handler(base, {
       operationId: "req_5",
       requestId: "req_5",
       agentId: "agent_1",
@@ -251,7 +251,7 @@ describe("controls", () => {
     });
 
     const fetchMock = vi.mocked(globalThis.fetch);
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.priority.override",
       params: { priority: "high", durationMs: 1000 },
@@ -267,7 +267,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_6", status: "accepted" }, false);
 
-    const result = await controls.dispatch._handler(ctx as never, {
+    const result = await asHandler(controls.dispatch)._handler(ctx as never, {
       agentId: "agent_1",
       command: "agent.redirect",
       params: { taskId: "task_1" },
@@ -281,7 +281,7 @@ describe("controls", () => {
 
   it("bulk dispatch returns when all operations exist", async () => {
     const { ctx, base } = createActionCtx();
-    await controls.createOperation._handler(base, {
+    await asHandler(controls.createOperation)._handler(base, {
       operationId: "req_7:agent_1",
       requestId: "req_7",
       bulkId: "req_7",
@@ -292,7 +292,7 @@ describe("controls", () => {
       requestedBy: "user_1",
       requestedAt: Date.now(),
     });
-    await controls.createOperation._handler(base, {
+    await asHandler(controls.createOperation)._handler(base, {
       operationId: "req_7:agent_2",
       requestId: "req_7",
       bulkId: "req_7",
@@ -305,7 +305,7 @@ describe("controls", () => {
     });
 
     const fetchMock = vi.mocked(globalThis.fetch);
-    const result = await controls.bulkDispatch._handler(ctx as never, {
+    const result = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_1", "agent_2"],
       command: "agent.kill",
       requestId: "req_7",
@@ -320,7 +320,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_8", status: "accepted" });
 
-    const result = await controls.bulkDispatch._handler(ctx as never, {
+    const result = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_1", "agent_2"],
       command: "agent.resume",
       requestId: "req_8",
@@ -328,14 +328,14 @@ describe("controls", () => {
 
     expect(result.ok).toBe(true);
     expect(result.bridgeStatus).toBe("accepted");
-    expect(result.operations.every((op) => op.status === "acked")).toBe(true);
+    expect((result.operations as Array<{ status: string }>).every((op) => op.status === "acked")).toBe(true);
   });
 
   it("bulk dispatch handles rejected acknowledgments", async () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_11", status: "rejected", error: "nope" });
 
-    const result = await controls.bulkDispatch._handler(ctx as never, {
+    const result = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_1", "agent_2"],
       command: "agent.pause",
       requestId: "req_11",
@@ -343,14 +343,14 @@ describe("controls", () => {
 
     expect(result.ok).toBe(false);
     expect(result.bridgeStatus).toBe("rejected");
-    expect(result.operations.every((op) => op.status === "failed")).toBe(true);
+    expect((result.operations as Array<{ status: string }>).every((op) => op.status === "failed")).toBe(true);
   });
 
   it("bulk dispatch handles error acknowledgments", async () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_12", status: "error", error: "timeout" });
 
-    const result = await controls.bulkDispatch._handler(ctx as never, {
+    const result = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_1"],
       command: "agent.pause",
       requestId: "req_12",
@@ -365,7 +365,7 @@ describe("controls", () => {
     const { ctx } = createActionCtx();
     mockBridgeResponse({ requestId: "req_9", status: "accepted" }, false);
 
-    const result = await controls.bulkDispatch._handler(ctx as never, {
+    const result = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
       agentIds: ["agent_1"],
       command: "agent.pause",
       params: { reason: "stop" },
@@ -380,7 +380,7 @@ describe("controls", () => {
   it("throws on invalid dispatch input", async () => {
     const { ctx } = createActionCtx();
     await expect(
-      controls.dispatch._handler(ctx as never, {
+      asHandler(controls.dispatch)._handler(ctx as never, {
         agentId: "",
         command: "agent.pause",
       })
@@ -394,7 +394,7 @@ describe("controls", () => {
     };
 
     await expect(
-      controls.dispatch._handler(ctx as never, {
+      asHandler(controls.dispatch)._handler(ctx as never, {
         agentId: "agent_1",
         command: "agent.pause",
       })
@@ -404,7 +404,7 @@ describe("controls", () => {
   it("throws on invalid bulk dispatch input", async () => {
     const { ctx } = createActionCtx();
     await expect(
-      controls.bulkDispatch._handler(ctx as never, {
+      asHandler(controls.bulkDispatch)._handler(ctx as never, {
         agentIds: [],
         command: "agent.pause",
       })
@@ -418,7 +418,7 @@ describe("controls", () => {
     };
 
     await expect(
-      controls.bulkDispatch._handler(ctx as never, {
+      asHandler(controls.bulkDispatch)._handler(ctx as never, {
         agentIds: ["agent_1"],
         command: "agent.pause",
       })
@@ -464,11 +464,11 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    const result = await controls.listActiveByAgent._handler(ctx, {
+    const result = await asHandler(controls.listActiveByAgent)._handler(ctx, {
       agentId: "agent_1",
     });
 
-    const statuses = result.map((entry) => entry.status);
+    const statuses = result.map((entry: { status: string }) => entry.status);
     expect(statuses).toContain("queued");
     expect(statuses).toContain("sent");
     expect(statuses).toContain("acked");
@@ -496,7 +496,7 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    const result = await controls.listRecentByOperator._handler(ctx, {
+    const result = await asHandler(controls.listRecentByOperator)._handler(ctx, {
       requestedBy: "user_1",
     });
 
@@ -527,7 +527,7 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    const result = await controls.listByBulkId._handler(ctx, {
+    const result = await asHandler(controls.listByBulkId)._handler(ctx, {
       bulkId: "bulk_req",
     });
 
@@ -546,7 +546,7 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    const result = await controls.listAuditsByAgent._handler(ctx, {
+    const result = await asHandler(controls.listAuditsByAgent)._handler(ctx, {
       agentId: "agent_1",
     });
 
@@ -575,7 +575,7 @@ describe("controls", () => {
       requestedAt: Date.now(),
     });
 
-    const result = await controls.listAuditsRecent._handler(ctx, {
+    const result = await asHandler(controls.listAuditsRecent)._handler(ctx, {
       outcome: "rejected",
     });
 
