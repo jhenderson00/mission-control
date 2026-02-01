@@ -148,6 +148,29 @@ export default defineSchema({
     .index("by_author", ["authorType", "authorId", "createdAt"]),
 
   /**
+   * Notifications - Delivery queue for mentions and alerts
+   */
+  notifications: defineTable({
+    recipientType: v.union(v.literal("user"), v.literal("agent")),
+    recipientId: v.string(),
+    type: v.union(v.literal("mention")),
+    status: v.union(v.literal("pending"), v.literal("delivered")),
+    message: v.string(),
+    attempts: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    taskId: v.optional(v.id("tasks")),
+    commentId: v.optional(v.id("taskComments")),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    deliveredAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status", "createdAt"])
+    .index("by_status_recipient", ["status", "recipientType", "createdAt"])
+    .index("by_recipient", ["recipientType", "recipientId", "createdAt"])
+    .index("by_task", ["taskId", "createdAt"]),
+
+  /**
    * Events - Raw events from Gateway (immutable log)
    */
   events: defineTable({

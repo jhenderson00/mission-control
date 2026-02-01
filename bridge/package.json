@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node -r dotenv/config dist/index.js"
+    "start": "node -r dotenv/config dist/index.js",
+    "start:notifications": "node -r dotenv/config dist/notification-daemon.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
