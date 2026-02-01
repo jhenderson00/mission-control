@@ -204,4 +204,168 @@ describe("agents functions", () => {
     expect(statuses).toHaveLength(1);
     expect(statuses[0].agentId).toBe("agent_heartbeat");
   });
+
+  it("updates presence status and clears sessions on offline", async () => {
+    const ctx = createMockCtx();
+    await agents.updateAgentStatus._handler(ctx, {
+      agentId: "agent_online",
+      status: "online",
+      lastSeen: Date.now(),
+      sessionInfo: { sessionKey: "session_alpha" },
+    });
+
+    await agents.updateAgentStatus._handler(ctx, {
+      agentId: "agent_busy",
+      status: "busy",
+      lastSeen: Date.now(),
+      sessionInfo: { session_id: "session_beta" },
+    });
+
+    await agents.updateAgentStatus._handler(ctx, {
+      agentId: "agent_online",
+      status: "offline",
+      lastSeen: Date.now() + 5000,
+    });
+
+    const statuses = await ctx.db.query("agentStatus").collect();
+    const online = statuses.find((status) => status.agentId === "agent_online");
+    const busy = statuses.find((status) => status.agentId === "agent_busy");
+
+    expect(online?.status).toBe("offline");
+    expect(online?.currentSession).toBeUndefined();
+    expect(online?.sessionInfo).toEqual({ sessionKey: "session_alpha" });
+    expect(busy?.currentSession).toBe("session_beta");
+  });
+
+  it("preserves paused or busy status on heartbeat", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentStatus", {
+      agentId: "agent_paused",
+      status: "paused",
+      lastHeartbeat: Date.now(),
+      lastActivity: Date.now(),
+    });
+    await ctx.db.insert("agentStatus", {
+      agentId: "agent_busy",
+      status: "busy",
+      lastHeartbeat: Date.now(),
+      lastActivity: Date.now(),
+    });
+
+    await agents.updateStatusFromEvent._handler(ctx, {
+      eventId: "evt_heartbeat_paused",
+      eventType: "heartbeat",
+      agentId: "agent_paused",
+      sessionKey: "session_paused",
+      timestamp: new Date().toISOString(),
+      sequence: 3,
+      payload: { status: "ok" },
+    });
+
+    await agents.updateStatusFromEvent._handler(ctx, {
+      eventId: "evt_heartbeat_busy",
+      eventType: "heartbeat",
+      agentId: "agent_busy",
+      sessionKey: "session_busy",
+      timestamp: new Date().toISOString(),
+      sequence: 4,
+      payload: { status: "ok" },
+    });
+
+    const statuses = await ctx.db.query("agentStatus").collect();
+    const paused = statuses.find((status) => status.agentId === "agent_paused");
+    const busy = statuses.find((status) => status.agentId === "agent_busy");
+
+    expect(paused?.status).toBe("paused");
+    expect(busy?.status).toBe("busy");
+  });
+
+  it("updates agent status with a current task", async () => {
+    const ctx = createMockCtx();
+    const taskId = await ctx.db.insert("tasks", {
+      title: "Task C",
+      status: "active",
+      assignedAgentIds: [],
+      requester: "system",
+      priority: "high",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    const id = await ctx.db.insert("agents", {
+      name: "Golf",
+      status: "idle",
+      type: "executor",
+      model: "m7",
+      host: "local",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    await agents.updateStatus._handler(ctx, {
+      id: id as never,
+      status: "active",
+      currentTaskId: taskId as never,
+    });
+
+    const updated = await ctx.db.get(id);
+    expect(updated?.currentTaskId).toBe(taskId);
+  });
+
+  it("handles status update http payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const ctx = { runMutation: vi.fn(async () => {}) };
+
+    const unauthorized = await agents.updateAgentStatusHttp(
+      ctx as never,
+      new Request("https://example.test/status", { method: "POST", body: "{}" })
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const invalidJson = await agents.updateAgentStatusHttp(
+      ctx as never,
+      new Request("https://example.test/status", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidPayload = await agents.updateAgentStatusHttp(
+      ctx as never,
+      new Request("https://example.test/status", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{}",
+      })
+    );
+    expect(invalidPayload.status).toBe(400);
+
+    const validPayload = await agents.updateAgentStatusHttp(
+      ctx as never,
+      new Request("https://example.test/status", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify([
+          {
+            agentId: "agent_ok",
+            status: "online",
+            lastSeen: Date.now(),
+            sessionInfo: { sessionKey: "session_ok" },
+          },
+          {
+            agentId: "agent_ok_2",
+            status: "paused",
+            lastSeen: Date.now(),
+          },
+        ]),
+      })
+    );
+
+    expect(validPayload.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(2);
+
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
 });

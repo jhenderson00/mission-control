@@ -32,6 +32,28 @@ export type HelloOkFrame = {
 
 export type GatewayFrame = GatewayEvent | GatewayResponse | HelloOkFrame;
 
+export type PresenceEntry = {
+  deviceId: string;
+  roles?: string[];
+  scopes?: string[];
+  connectedAt?: string;
+  lastSeen?: string;
+};
+
+export type PresenceSnapshot = {
+  entries: PresenceEntry[];
+  observedAt: string;
+};
+
+export type AgentPresenceStatus = "online" | "offline" | "busy" | "paused";
+
+export type AgentStatusUpdate = {
+  agentId: string;
+  status: AgentPresenceStatus;
+  lastSeen: number;
+  sessionInfo?: Record<string, unknown>;
+};
+
 export type BridgeEvent = {
   eventId: string;
   eventType: string;

@@ -7,6 +7,8 @@ import type {
   GatewayRequest,
   GatewayResponse,
   HelloOkFrame,
+  PresenceEntry,
+  PresenceSnapshot,
 } from "./types";
 
 type PendingRequest = {
@@ -16,6 +18,57 @@ type PendingRequest = {
 };
 
 type ConnectSnapshot = HelloOkFrame | null;
+
+function resolveString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function resolveStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const strings = value.filter((item) => typeof item === "string") as string[];
+  return strings.length > 0 ? strings : undefined;
+}
+
+function parsePresenceEntry(value: unknown): PresenceEntry | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const deviceId = resolveString(record.deviceId);
+  if (!deviceId) {
+    return null;
+  }
+
+  return {
+    deviceId,
+    roles: resolveStringArray(record.roles),
+    scopes: resolveStringArray(record.scopes),
+    connectedAt: resolveString(record.connectedAt),
+    lastSeen: resolveString(record.lastSeen),
+  };
+}
+
+export function parsePresencePayload(payload: unknown): PresenceSnapshot | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const entriesRaw = record.entries;
+  if (!Array.isArray(entriesRaw)) {
+    return null;
+  }
+
+  const entries = entriesRaw
+    .map((entry) => parsePresenceEntry(entry))
+    .filter((entry): entry is PresenceEntry => Boolean(entry));
+
+  return {
+    entries,
+    observedAt: new Date().toISOString(),
+  };
+}
 
 export class GatewayClient extends EventEmitter {
   private ws: WebSocket | null = null;
@@ -77,6 +130,10 @@ export class GatewayClient extends EventEmitter {
 
   async subscribe(events: string[]): Promise<void> {
     await this.request("subscribe", { events });
+  }
+
+  async subscribePresence(): Promise<void> {
+    await this.subscribe(["presence"]);
   }
 
   getHelloSnapshot(): ConnectSnapshot {
@@ -162,6 +219,12 @@ export class GatewayClient extends EventEmitter {
 
     if (frame.type === "event") {
       this.emit("event", frame as GatewayEvent);
+      if ((frame as GatewayEvent).event === "presence") {
+        const snapshot = parsePresencePayload((frame as GatewayEvent).payload);
+        if (snapshot) {
+          this.emit("presence", snapshot);
+        }
+      }
       return;
     }
 

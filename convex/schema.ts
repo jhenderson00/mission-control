@@ -129,12 +129,14 @@ export default defineSchema({
     agentId: v.string(),
     status: v.union(
       v.literal("online"),
-      v.literal("degraded"),
-      v.literal("offline")
+      v.literal("offline"),
+      v.literal("busy"),
+      v.literal("paused")
     ),
     lastHeartbeat: v.number(),
     lastActivity: v.number(),
     currentSession: v.optional(v.string()),
+    sessionInfo: v.optional(v.any()),
   })
     .index("by_agent", ["agentId"]),
 

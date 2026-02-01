@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
-type HeartbeatStatus = "online" | "degraded" | "offline";
+type HeartbeatStatus = "online" | "offline" | "busy" | "paused";
 
 type HeartbeatIndicatorProps = {
   status?: HeartbeatStatus;
@@ -16,10 +16,15 @@ const heartbeatStyles: Record<HeartbeatStatus, { label: string; dot: string; tex
     dot: "bg-emerald-400",
     text: "text-emerald-300 border-emerald-500/30",
   },
-  degraded: {
-    label: "Degraded",
+  busy: {
+    label: "Busy",
     dot: "bg-amber-400",
     text: "text-amber-300 border-amber-500/30",
+  },
+  paused: {
+    label: "Paused",
+    dot: "bg-zinc-400",
+    text: "text-zinc-300 border-zinc-500/30",
   },
   offline: {
     label: "Offline",

@@ -23,7 +23,7 @@ import {
 import Link from "next/link";
 import type { AgentSummary, AgentType, AgentStatus } from "@/lib/agent-types";
 
-type HeartbeatStatus = "online" | "degraded" | "offline";
+type HeartbeatStatus = "online" | "offline" | "busy" | "paused";
 
 type AgentCardProps = {
   agent: AgentSummary;

@@ -2,12 +2,15 @@ import { randomUUID } from "crypto";
 import http from "http";
 import { ConvexClient } from "./convex-client";
 import { EventBuffer } from "./event-buffer";
-import { GatewayClient } from "./gateway-client";
+import { GatewayClient, parsePresencePayload } from "./gateway-client";
 import type {
   BridgeConfig,
   BridgeEvent,
   GatewayEvent,
   HelloOkFrame,
+  AgentStatusUpdate,
+  PresenceEntry,
+  PresenceSnapshot,
 } from "./types";
 
 const DEFAULTS = {
@@ -22,6 +25,8 @@ const DEFAULTS = {
   controlPort: 8787,
   controlMaxBodyBytes: 1024 * 1024,
 };
+
+const BUSY_ACTIVITY_WINDOW_MS = 2 * 60 * 1000;
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -140,6 +145,26 @@ function resolveTimestamp(payload: unknown): string {
   return new Date().toISOString();
 }
 
+function parseTimestampMs(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function agentIdFromSessionKey(sessionKey: string | undefined): string | null {
+  if (!sessionKey) {
+    return null;
+  }
+  const parts = sessionKey.split(":");
+  if (parts.length < 2 || parts[0] !== "agent") {
+    return null;
+  }
+  const candidate = parts[1];
+  return candidate.length > 0 ? candidate : null;
+}
+
 function sessionKeyFromSession(session: unknown): string | null {
   if (session && typeof session === "object") {
     const record = session as Record<string, unknown>;
@@ -200,6 +225,11 @@ type ControlAck = {
   requestId: string;
   status: "accepted" | "rejected" | "error";
   error?: string;
+};
+
+type ActivitySnapshot = {
+  lastActivity: number;
+  sessionKey?: string;
 };
 
 type ParsedControlPayload = {
@@ -367,6 +397,9 @@ class Bridge {
   private flushing = false;
   private localSequence = 0;
   private lastEventTime = 0;
+  private readonly presenceAgents = new Set<string>();
+  private readonly recentActivity = new Map<string, ActivitySnapshot>();
+  private readonly pausedAgents = new Set<string>();
 
   constructor(private readonly config: BridgeConfig) {
     this.gateway = new GatewayClient(config);
@@ -383,6 +416,9 @@ class Bridge {
     });
     this.gateway.on("event", (event: GatewayEvent) => {
       this.handleGatewayEvent(event);
+    });
+    this.gateway.on("presence", (snapshot: PresenceSnapshot) => {
+      void this.handlePresenceSnapshot(snapshot);
     });
     this.gateway.on("disconnected", () => {
       console.warn("[bridge] gateway disconnected");
@@ -411,10 +447,10 @@ class Bridge {
       await this.gateway.subscribe([
         "agent",
         "chat",
-        "presence",
         "heartbeat",
         "health",
       ]);
+      await this.gateway.subscribePresence();
     } catch (error) {
       console.error("[bridge] failed to subscribe to gateway", error);
     }
@@ -555,6 +591,8 @@ class Bridge {
     switch (command) {
       case "pause": {
         await this.gateway.send(sessionKey, "/stop");
+        this.pausedAgents.add(agentId);
+        void this.updateManualStatus(agentId, "paused", sessionKey);
         return { requestId, status: "accepted" };
       }
       case "resume": {
@@ -563,6 +601,8 @@ class Bridge {
           resolveString(params.message) ??
           "Resume work";
         await this.gateway.call("cron.wake", { text, mode: "now" });
+        this.pausedAgents.delete(agentId);
+        void this.updateManualStatus(agentId, "busy", sessionKey);
         return { requestId, status: "accepted" };
       }
       case "redirect": {
@@ -579,6 +619,8 @@ class Bridge {
           message = serialized ?? String(payload);
         }
         await this.gateway.send(sessionKey, message);
+        this.pausedAgents.delete(agentId);
+        void this.updateManualStatus(agentId, "busy", sessionKey);
         return { requestId, status: "accepted" };
       }
       case "kill": {
@@ -588,6 +630,8 @@ class Bridge {
       }
       case "restart": {
         await this.gateway.send(sessionKey, "/new");
+        this.pausedAgents.delete(agentId);
+        void this.updateManualStatus(agentId, "busy", sessionKey);
         return { requestId, status: "accepted" };
       }
       case "priority": {
@@ -613,6 +657,7 @@ class Bridge {
     }
     this.lastEventTime = now;
 
+    this.trackSessionActivity(frame);
     const event = this.normalizeGatewayEvent(frame);
     const shouldFlush = this.buffer.add(event);
     if (shouldFlush) {
@@ -637,6 +682,144 @@ class Bridge {
       sequence: frame.seq ?? this.nextSequence(),
       payload,
     };
+  }
+
+  private trackSessionActivity(frame: GatewayEvent): void {
+    if (frame.event !== "agent" && frame.event !== "chat") {
+      return;
+    }
+
+    const payload = frame.payload;
+    const sessionKey = resolveSessionKey(payload);
+    const agentId =
+      agentIdFromSessionKey(sessionKey) ?? resolveAgentId(payload, "");
+
+    if (!agentId) {
+      return;
+    }
+
+    const timestamp = parseTimestampMs(resolveTimestamp(payload), Date.now());
+    this.recentActivity.set(agentId, { lastActivity: timestamp, sessionKey });
+
+    if (this.pausedAgents.has(agentId)) {
+      this.pausedAgents.delete(agentId);
+    }
+  }
+
+  private resolvePresenceStatus(
+    agentId: string,
+    lastSeen: number,
+    activity?: ActivitySnapshot
+  ): AgentStatusUpdate["status"] {
+    if (this.pausedAgents.has(agentId)) {
+      return "paused";
+    }
+    const now = Math.max(Date.now(), lastSeen);
+    if (activity && now - activity.lastActivity <= BUSY_ACTIVITY_WINDOW_MS) {
+      return "busy";
+    }
+    return "online";
+  }
+
+  private buildSessionInfo(
+    entry: PresenceEntry,
+    activity: ActivitySnapshot | undefined,
+    lastSeen: number
+  ): Record<string, unknown> {
+    const info: Record<string, unknown> = {
+      deviceId: entry.deviceId,
+      roles: entry.roles,
+      scopes: entry.scopes,
+      connectedAt: entry.connectedAt,
+      lastSeen,
+    };
+
+    if (activity?.sessionKey) {
+      info.sessionKey = activity.sessionKey;
+    }
+    if (activity?.lastActivity) {
+      info.lastActivity = activity.lastActivity;
+    }
+
+    return info;
+  }
+
+  private async handlePresenceSnapshot(
+    snapshot: PresenceSnapshot
+  ): Promise<void> {
+    const observedAt = parseTimestampMs(snapshot.observedAt, Date.now());
+    const nextPresence = new Set<string>();
+    const updates: AgentStatusUpdate[] = [];
+
+    for (const entry of snapshot.entries) {
+      const agentId = entry.deviceId;
+      nextPresence.add(agentId);
+
+      const lastSeen = parseTimestampMs(
+        entry.lastSeen ?? entry.connectedAt,
+        observedAt
+      );
+      const activity = this.recentActivity.get(agentId);
+      const status = this.resolvePresenceStatus(agentId, lastSeen, activity);
+
+      updates.push({
+        agentId,
+        status,
+        lastSeen,
+        sessionInfo: this.buildSessionInfo(entry, activity, lastSeen),
+      });
+    }
+
+    for (const agentId of this.presenceAgents) {
+      if (nextPresence.has(agentId)) {
+        continue;
+      }
+      const activity = this.recentActivity.get(agentId);
+      const sessionInfo = activity
+        ? {
+            sessionKey: activity.sessionKey,
+            lastActivity: activity.lastActivity,
+          }
+        : undefined;
+      updates.push({
+        agentId,
+        status: "offline",
+        lastSeen: observedAt,
+        sessionInfo,
+      });
+    }
+
+    this.presenceAgents.clear();
+    nextPresence.forEach((agentId) => this.presenceAgents.add(agentId));
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    try {
+      await this.convex.updateAgentStatuses(updates);
+    } catch (error) {
+      console.error("[bridge] failed to update agent statuses", error);
+    }
+  }
+
+  private async updateManualStatus(
+    agentId: string,
+    status: AgentStatusUpdate["status"],
+    sessionKey?: string
+  ): Promise<void> {
+    try {
+      await this.convex.updateAgentStatuses([
+        {
+          agentId,
+          status,
+          lastSeen: Date.now(),
+          sessionInfo: sessionKey ? { sessionKey } : undefined,
+        },
+      ]);
+    } catch (error) {
+      console.error("[bridge] failed to update agent status override", error);
+    }
   }
 
   private async flushEvents(): Promise<void> {
@@ -664,6 +847,10 @@ class Bridge {
 
     if (hello?.presence) {
       syncEvents.push(this.buildSyncEvent("presence", "system", hello.presence));
+      const snapshot = parsePresencePayload(hello.presence);
+      if (snapshot) {
+        await this.handlePresenceSnapshot(snapshot);
+      }
     }
     if (hello?.health) {
       syncEvents.push(this.buildSyncEvent("health", "system", hello.health));
@@ -672,6 +859,10 @@ class Bridge {
     const presence = await this.safeRequest("system-presence");
     if (presence) {
       syncEvents.push(this.buildSyncEvent("presence", "system", presence));
+      const snapshot = parsePresencePayload(presence);
+      if (snapshot) {
+        await this.handlePresenceSnapshot(snapshot);
+      }
     }
 
     const sessions = await this.safeRequest("sessions.list");
