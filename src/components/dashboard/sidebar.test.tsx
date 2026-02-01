@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Sidebar } from "@/components/dashboard/sidebar";
+
+vi.mock("convex/react", () => ({
+  useQuery: vi.fn(),
+}));
 
 declare global {
   var __setMockPathname: (path: string) => void;
