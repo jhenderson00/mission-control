@@ -15,6 +15,7 @@ import { GatewayClient, parsePresencePayload } from "./gateway-client";
 import type {
   BridgeConfig,
   BridgeEvent,
+  GatewayConnectionState,
   GatewayEvent,
   HelloOkFrame,
   AgentStatusUpdate,
@@ -273,6 +274,12 @@ type ControlAck = {
   error?: string;
 };
 
+type HealthResponse = {
+  status: "ok" | "degraded";
+  timestamp: string;
+  gateway: GatewayConnectionState & { health?: unknown };
+};
+
 type ActivitySnapshot = {
   lastActivity: number;
   sessionKey?: string;
@@ -408,7 +415,6 @@ class Bridge {
       console.warn(
         "[bridge] BRIDGE_CONTROL_SECRET not set; control endpoint disabled"
       );
-      return;
     }
 
     const port = parseNumber(
@@ -417,7 +423,7 @@ class Bridge {
     );
 
     this.controlServer = http.createServer((req, res) => {
-      void this.handleControlRequest(req, res, secret);
+      void this.handleHttpRequest(req, res, secret);
     });
 
     this.controlServer.on("error", (error) => {
@@ -427,6 +433,68 @@ class Bridge {
     this.controlServer.listen(port, () => {
       console.log(`[bridge] control endpoint listening on :${port}`);
     });
+  }
+
+  private async handleHttpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    secret: string | null
+  ): Promise<void> {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === "/api/health" || url.pathname === "/health") {
+      await this.handleHealthRequest(req, res, secret);
+      return;
+    }
+    if (url.pathname === "/api/control") {
+      if (!secret) {
+        res.statusCode = 503;
+        res.end("Control endpoint disabled");
+        return;
+      }
+      await this.handleControlRequest(req, res, secret);
+      return;
+    }
+    res.statusCode = 404;
+    res.end("Not found");
+  }
+
+  private async handleHealthRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    secret: string | null
+  ): Promise<void> {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.statusCode = 405;
+      res.end("Method not allowed");
+      return;
+    }
+
+    const providedSecret = secret ? resolveControlHeader(req.headers) : null;
+    const includeGatewayHealth = Boolean(secret && providedSecret === secret);
+    const gatewayState = this.gateway.getConnectionState();
+    const response: HealthResponse = {
+      status: gatewayState.connected ? "ok" : "degraded",
+      timestamp: new Date().toISOString(),
+      gateway: { ...gatewayState },
+    };
+
+    if (includeGatewayHealth && gatewayState.connected) {
+      try {
+        response.gateway.health = await this.gateway.healthCheck();
+      } catch (error) {
+        response.status = "degraded";
+        response.gateway.lastError =
+          error instanceof Error ? error.message : "Gateway health check failed";
+      }
+    }
+
+    res.statusCode = response.status === "ok" ? 200 : 503;
+    res.setHeader("content-type", "application/json");
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    res.end(JSON.stringify(response));
   }
 
   private normalizeAgentId(value: string | null | undefined): string | null {
@@ -616,10 +684,9 @@ class Bridge {
     res: http.ServerResponse,
     secret: string
   ): Promise<void> {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    if (req.method !== "POST" || url.pathname !== "/api/control") {
-      res.statusCode = 404;
-      res.end("Not found");
+    if (req.method !== "POST") {
+      res.statusCode = 405;
+      res.end("Method not allowed");
       return;
     }
 
