@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 const DEFAULTS = {
-  gatewayUrl: "ws://localhost:18789",
+  gatewayUrl: "ws://127.0.0.1:18789",
   reconnectIntervalMs: 5000,
   maxReconnectAttempts: 10,
   batchSize: 10,
@@ -40,9 +40,18 @@ function parseNumber(value: string | undefined, fallback: number): number {
 }
 
 function loadConfig(): BridgeConfig {
+  const gatewayToken =
+    process.env.OPENCLAW_GATEWAY_TOKEN ?? process.env.GATEWAY_TOKEN;
+  if (!gatewayToken) {
+    throw new Error("Missing required env var: OPENCLAW_GATEWAY_TOKEN");
+  }
+
   return {
-    gatewayUrl: process.env.GATEWAY_URL ?? DEFAULTS.gatewayUrl,
-    gatewayToken: requiredEnv("GATEWAY_TOKEN"),
+    gatewayUrl:
+      process.env.OPENCLAW_GATEWAY_URL ??
+      process.env.GATEWAY_URL ??
+      DEFAULTS.gatewayUrl,
+    gatewayToken,
     convexUrl: requiredEnv("CONVEX_URL"),
     convexSecret: requiredEnv("CONVEX_ACTION_SECRET"),
     reconnectIntervalMs: parseNumber(
@@ -98,6 +107,13 @@ function resolveSessionKey(payload: unknown): string | undefined {
     );
   }
   return undefined;
+}
+
+function resolveSessionKeyForAgent(
+  agentId: string,
+  params: Record<string, unknown>
+): string {
+  return resolveString(params.sessionKey) ?? `agent:${agentId}:main`;
 }
 
 function resolveEventId(payload: unknown): string {
@@ -180,61 +196,133 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-type ControlPayload = {
-  method: string;
-  params?: Record<string, unknown>;
-  requestedBy: string;
-};
-
 type ControlAck = {
   requestId: string;
   status: "accepted" | "rejected" | "error";
   error?: string;
 };
 
-function parseControlPayload(payload: unknown): ControlPayload {
-  if (!isRecord(payload)) {
-    throw new Error("Invalid control payload");
+type ParsedControlPayload = {
+  agentId?: string;
+  agentIds?: string[];
+  command: ControlCommand;
+  params: Record<string, unknown>;
+  requestId?: string;
+  requestedBy?: string;
+};
+
+type ControlCommand =
+  | "pause"
+  | "resume"
+  | "redirect"
+  | "kill"
+  | "restart"
+  | "priority";
+
+class ControlValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ControlValidationError";
   }
-  const method = payload.method;
-  const requestedBy = payload.requestedBy;
-  const params = payload.params;
-  if (typeof method !== "string" || method.length === 0) {
-    throw new Error("Invalid control method");
-  }
-  if (typeof requestedBy !== "string" || requestedBy.length === 0) {
-    throw new Error("Invalid requestedBy");
-  }
-  if (params !== undefined && !isRecord(params)) {
-    throw new Error("Invalid params");
-  }
-  return { method, requestedBy, params };
 }
 
-function parseGatewayAck(
-  response: unknown,
-  fallbackRequestId: string
-): ControlAck {
-  if (isRecord(response)) {
-    const requestId = response.requestId;
-    const status = response.status;
-    const error = response.error;
-    if (
-      typeof requestId === "string" &&
-      (status === "accepted" || status === "rejected" || status === "error")
-    ) {
-      return {
-        requestId,
-        status,
-        error: typeof error === "string" ? error : undefined,
-      };
+function normalizeCommand(command: string): ControlCommand | null {
+  switch (command) {
+    case "pause":
+    case "resume":
+    case "redirect":
+    case "kill":
+    case "restart":
+    case "priority":
+      return command;
+    case "agent.pause":
+      return "pause";
+    case "agent.resume":
+      return "resume";
+    case "agent.redirect":
+      return "redirect";
+    case "agent.kill":
+      return "kill";
+    case "agent.restart":
+      return "restart";
+    case "agent.priority.override":
+    case "agent.priority":
+      return "priority";
+    default:
+      return null;
+  }
+}
+
+function normalizeAgentIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const agentIds = value.filter((id) => typeof id === "string" && id.length > 0);
+  return agentIds.length === value.length ? agentIds : null;
+}
+
+function parseControlPayload(payload: unknown): ParsedControlPayload {
+  if (!isRecord(payload)) {
+    throw new ControlValidationError("Invalid control payload");
+  }
+
+  const rawCommand = resolveString(payload.command) ?? resolveString(payload.method);
+  const rawParams = payload.params;
+  if (rawParams !== undefined && !isRecord(rawParams)) {
+    throw new ControlValidationError("Invalid params");
+  }
+  const params = isRecord(rawParams) ? rawParams : {};
+  const requestedBy = resolveString(payload.requestedBy);
+  const requestId =
+    resolveString(payload.requestId) ?? resolveString(params.requestId);
+
+  if (!rawCommand) {
+    throw new ControlValidationError("Invalid control command");
+  }
+
+  if (rawCommand === "agents.bulk") {
+    const nestedCommandRaw = resolveString(params.command);
+    const nestedCommand = nestedCommandRaw
+      ? normalizeCommand(nestedCommandRaw)
+      : null;
+    const agentIds = normalizeAgentIds(params.agentIds);
+    const nestedParams = isRecord(params.params) ? params.params : {};
+    const nestedRequestId = resolveString(params.requestId) ?? requestId;
+
+    if (!nestedCommand) {
+      throw new ControlValidationError("Invalid bulk command");
     }
+    if (!agentIds) {
+      throw new ControlValidationError("Invalid bulk agentIds");
+    }
+
+    return {
+      agentIds,
+      command: nestedCommand,
+      params: nestedParams,
+      requestId: nestedRequestId,
+      requestedBy,
+    };
+  }
+
+  const command = normalizeCommand(rawCommand);
+  if (!command) {
+    throw new ControlValidationError("Unsupported control command");
+  }
+
+  const agentId =
+    resolveString(payload.agentId) ?? resolveString(params.agentId);
+
+  if (!agentId) {
+    throw new ControlValidationError("Missing agentId");
   }
 
   return {
-    requestId: fallbackRequestId,
-    status: "error",
-    error: "Invalid gateway response",
+    agentId,
+    command,
+    params,
+    requestId,
+    requestedBy,
   };
 }
 
@@ -380,7 +468,7 @@ class Bridge {
       return;
     }
 
-    let payload: ControlPayload;
+    let payload: ParsedControlPayload;
     try {
       const { body, tooLarge } = await readJsonBody(req);
       if (tooLarge) {
@@ -390,35 +478,131 @@ class Bridge {
       }
       payload = parseControlPayload(body);
     } catch (error) {
+      if (error instanceof ControlValidationError) {
+        res.statusCode = 400;
+        res.end(error.message);
+        return;
+      }
       res.statusCode = 400;
       res.end("Invalid JSON payload");
       return;
     }
 
-    const requestId =
-      typeof payload.params?.requestId === "string" &&
-      payload.params.requestId.length > 0
-        ? payload.params.requestId
-        : randomUUID();
-
-    const gatewayParams = {
-      ...(payload.params ?? {}),
-      requestId,
-      requestedBy: payload.requestedBy,
-    };
-
+    const requestId = payload.requestId ?? randomUUID();
     let ack: ControlAck;
     try {
-      const response = await this.gateway.request(payload.method, gatewayParams);
-      ack = parseGatewayAck(response, requestId);
+      if (payload.agentIds) {
+        ack = await this.executeBulkControl(
+          payload.agentIds,
+          payload.command,
+          payload.params,
+          requestId
+        );
+      } else if (payload.agentId) {
+        ack = await this.executeControl(
+          payload.agentId,
+          payload.command,
+          payload.params,
+          requestId
+        );
+      } else {
+        throw new ControlValidationError("Missing agentId");
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gateway error";
-      ack = { requestId, status: "error", error: message };
+      if (error instanceof ControlValidationError) {
+        ack = { requestId, status: "rejected", error: error.message };
+      } else {
+        const message = error instanceof Error ? error.message : "Gateway error";
+        ack = { requestId, status: "error", error: message };
+      }
     }
 
     res.statusCode = 200;
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify(ack));
+  }
+
+  private async executeBulkControl(
+    agentIds: string[],
+    command: ControlCommand,
+    params: Record<string, unknown>,
+    requestId: string
+  ): Promise<ControlAck> {
+    try {
+      await Promise.all(
+        agentIds.map((agentId) =>
+          this.executeControl(agentId, command, params, requestId)
+        )
+      );
+      return { requestId, status: "accepted" };
+    } catch (error) {
+      if (error instanceof ControlValidationError) {
+        return { requestId, status: "rejected", error: error.message };
+      }
+      const message = error instanceof Error ? error.message : "Gateway error";
+      return { requestId, status: "error", error: message };
+    }
+  }
+
+  private async executeControl(
+    agentId: string,
+    command: ControlCommand,
+    params: Record<string, unknown>,
+    requestId: string
+  ): Promise<ControlAck> {
+    const sessionKey = resolveSessionKeyForAgent(agentId, params);
+
+    switch (command) {
+      case "pause": {
+        await this.gateway.send(sessionKey, "/stop");
+        return { requestId, status: "accepted" };
+      }
+      case "resume": {
+        const text =
+          resolveString(params.text) ??
+          resolveString(params.message) ??
+          "Resume work";
+        await this.gateway.call("cron.wake", { text, mode: "now" });
+        return { requestId, status: "accepted" };
+      }
+      case "redirect": {
+        const payload =
+          params.taskPayload ?? params.text ?? params.message ?? params.task;
+        if (payload === undefined) {
+          throw new ControlValidationError("Missing task payload");
+        }
+        let message: string;
+        if (typeof payload === "string") {
+          message = payload;
+        } else {
+          const serialized = JSON.stringify(payload);
+          message = serialized ?? String(payload);
+        }
+        await this.gateway.send(sessionKey, message);
+        return { requestId, status: "accepted" };
+      }
+      case "kill": {
+        await this.gateway.send(sessionKey, "/stop");
+        await this.gateway.send(sessionKey, "/reset");
+        return { requestId, status: "accepted" };
+      }
+      case "restart": {
+        await this.gateway.send(sessionKey, "/new");
+        return { requestId, status: "accepted" };
+      }
+      case "priority": {
+        const priority =
+          resolveString(params.priority) ??
+          (typeof params.priority === "number"
+            ? String(params.priority)
+            : null);
+        if (!priority) {
+          throw new ControlValidationError("Missing priority");
+        }
+        await this.gateway.send(sessionKey, `/queue priority:${priority}`);
+        return { requestId, status: "accepted" };
+      }
+    }
   }
 
   private handleGatewayEvent(frame: GatewayEvent): void {

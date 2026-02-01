@@ -13,6 +13,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowRight,
@@ -29,6 +38,7 @@ type Priority = (typeof priorities)[number];
 
 type ControlPanelProps = {
   agentId: string;
+  agentName?: string;
   disabled?: boolean;
 };
 
@@ -40,7 +50,11 @@ type DispatchStatus = {
 // Check if controls API is available (Convex may not have it deployed yet)
 const hasControlsApi = typeof api.controls?.dispatch !== "undefined";
 
-export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): React.ReactElement {
+export function ControlPanel({
+  agentId,
+  agentName,
+  disabled = false,
+}: ControlPanelProps): React.ReactElement {
   // Only call useAction if the API exists to avoid crashes
   const dispatch = hasControlsApi ? useAction(api.controls.dispatch) : null;
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -52,6 +66,32 @@ export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): 
   const [overridePriority, setOverridePriority] = useState<Priority | "">("");
   const [overrideDuration, setOverrideDuration] = useState("");
   const [sessionKey, setSessionKey] = useState("");
+  const [killDialogOpen, setKillDialogOpen] = useState(false);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  const [killConfirmation, setKillConfirmation] = useState("");
+  const [restartConfirmation, setRestartConfirmation] = useState("");
+
+  const normalizedAgentName = agentName?.trim().toLowerCase();
+  const confirmationHint = agentName?.trim()
+    ? `${agentName} or CONFIRM`
+    : "CONFIRM";
+
+  const isConfirmationValid = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    if (normalized === "confirm") {
+      return true;
+    }
+    if (normalizedAgentName) {
+      return normalized === normalizedAgentName;
+    }
+    return false;
+  };
+
+  const killConfirmed = isConfirmationValid(killConfirmation);
+  const restartConfirmed = isConfirmationValid(restartConfirmation);
 
   const isBlocked = disabled || !dispatch || pendingAction !== null;
   const displayedStatus =
@@ -320,24 +360,121 @@ export function ControlPanel({ agentId, disabled = false }: ControlPanelProps): 
             disabled={isBlocked}
           />
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleKill}
-              disabled={isBlocked}
+            <Dialog
+              open={killDialogOpen}
+              onOpenChange={(open) => {
+                setKillDialogOpen(open);
+                if (!open) {
+                  setKillConfirmation("");
+                }
+              }}
             >
-              <Siren className="mr-2 h-4 w-4" />
-              {pendingAction === "kill" ? "Killing..." : "Kill"}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleRestart}
-              disabled={isBlocked}
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={isBlocked}>
+                  <Siren className="mr-2 h-4 w-4" />
+                  {pendingAction === "kill" ? "Killing..." : "Kill"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Confirm kill</DialogTitle>
+                  <DialogDescription>
+                    This will terminate the active session immediately.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Type {confirmationHint} to proceed.
+                  </p>
+                  <Input
+                    placeholder={`Type ${confirmationHint}`}
+                    value={killConfirmation}
+                    onChange={(event) => setKillConfirmation(event.target.value)}
+                    disabled={isBlocked}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setKillDialogOpen(false)}
+                    disabled={pendingAction === "kill"}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={async () => {
+                      await handleKill();
+                      setKillDialogOpen(false);
+                      setKillConfirmation("");
+                    }}
+                    disabled={!killConfirmed || isBlocked}
+                  >
+                    {pendingAction === "kill" ? "Killing..." : "Confirm kill"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog
+              open={restartDialogOpen}
+              onOpenChange={(open) => {
+                setRestartDialogOpen(open);
+                if (!open) {
+                  setRestartConfirmation("");
+                }
+              }}
             >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {pendingAction === "restart" ? "Restarting..." : "Restart"}
-            </Button>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={isBlocked}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {pendingAction === "restart" ? "Restarting..." : "Restart"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Confirm restart</DialogTitle>
+                  <DialogDescription>
+                    This will restart the agent session and reset its context.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Type {confirmationHint} to proceed.
+                  </p>
+                  <Input
+                    placeholder={`Type ${confirmationHint}`}
+                    value={restartConfirmation}
+                    onChange={(event) => setRestartConfirmation(event.target.value)}
+                    disabled={isBlocked}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRestartDialogOpen(false)}
+                    disabled={pendingAction === "restart"}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={async () => {
+                      await handleRestart();
+                      setRestartDialogOpen(false);
+                      setRestartConfirmation("");
+                    }}
+                    disabled={!restartConfirmed || isBlocked}
+                  >
+                    {pendingAction === "restart" ? "Restarting..." : "Confirm restart"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </CardContent>

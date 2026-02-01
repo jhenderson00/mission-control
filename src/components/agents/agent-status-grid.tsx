@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
+import { BulkActionBar } from "@/components/agents/bulk-action-bar";
 import { useAgentStatus } from "@/lib/realtime";
 import {
   Cpu,
@@ -27,6 +28,8 @@ type HeartbeatStatus = "online" | "degraded" | "offline";
 type AgentCardProps = {
   agent: AgentSummary;
   heartbeatStatus?: HeartbeatStatus;
+  isSelected: boolean;
+  onSelectionChange: (agentId: string, isSelected: boolean) => void;
 };
 
 const typeIcons: Record<AgentType, typeof Cpu> = {
@@ -97,10 +100,16 @@ function ProgressBar({ status }: { status: AgentStatus }): React.ReactElement {
   );
 }
 
-function AgentCard({ agent, heartbeatStatus }: AgentCardProps): React.ReactElement {
+function AgentCard({
+  agent,
+  heartbeatStatus,
+  isSelected,
+  onSelectionChange,
+}: AgentCardProps): React.ReactElement {
   const TypeIcon = typeIcons[agent.type];
   const config = statusConfig[agent.status];
   const StatusIcon = config.icon;
+  const checkboxId = `agent-select-${agent._id}`;
 
   return (
     <Link href={`/agents/${agent._id}`}>
@@ -108,12 +117,32 @@ function AgentCard({ agent, heartbeatStatus }: AgentCardProps): React.ReactEleme
         className={cn(
           "group border-border/60 bg-card/40 backdrop-blur-sm transition-all",
           "hover:border-border/80 hover:bg-card/60 cursor-pointer",
-          agent.status === "active" && "ring-1 ring-primary/20"
+          agent.status === "active" && "ring-1 ring-primary/20",
+          isSelected && "ring-2 ring-primary/50"
         )}
       >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
+              <div
+                className="flex items-center"
+                data-selection-control="true"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                <input
+                  id={checkboxId}
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(event) =>
+                    onSelectionChange(agent._id, event.target.checked)
+                  }
+                  aria-label={`Select ${agent.name}`}
+                  className="h-4 w-4 rounded border-border/60 bg-background/70 text-primary accent-primary"
+                />
+              </div>
               <div
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg",
@@ -185,6 +214,43 @@ export function AgentStatusGrid({
 }: AgentStatusGridProps): React.ReactElement {
   const agentIds = useMemo(() => agents.map((agent) => agent._id), [agents]);
   const { statusByAgent } = useAgentStatus({ agentIds });
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  useEffect(() => {
+    const agentIdSet = new Set(agentIds);
+    setSelectedAgentIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (agentIdSet.has(id)) {
+          next.add(id);
+        }
+      }
+      return next;
+    });
+  }, [agentIds]);
+
+  const selectedAgents = useMemo(
+    () => agents.filter((agent) => selectedAgentIds.has(agent._id)),
+    [agents, selectedAgentIds]
+  );
+
+  const handleSelectionChange = (agentId: string, isSelected: boolean) => {
+    setSelectedAgentIds((prev) => {
+      const next = new Set(prev);
+      if (isSelected) {
+        next.add(agentId);
+      } else {
+        next.delete(agentId);
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedAgentIds(new Set());
+  };
 
   const { activeAgents, idleAgents, blockedAgents, failedAgents, standbyAgents } =
     useMemo(() => {
@@ -261,6 +327,8 @@ export function AgentStatusGrid({
                 key={agent._id}
                 agent={agent}
                 heartbeatStatus={statusByAgent.get(agent._id)?.status}
+                isSelected={selectedAgentIds.has(agent._id)}
+                onSelectionChange={handleSelectionChange}
               />
             ))}
           </div>
@@ -278,6 +346,8 @@ export function AgentStatusGrid({
                 key={agent._id}
                 agent={agent}
                 heartbeatStatus={statusByAgent.get(agent._id)?.status}
+                isSelected={selectedAgentIds.has(agent._id)}
+                onSelectionChange={handleSelectionChange}
               />
             ))}
           </div>
@@ -291,6 +361,11 @@ export function AgentStatusGrid({
           <p className="text-sm mt-1">Agents will appear here when spawned</p>
         </div>
       )}
+
+      <BulkActionBar
+        selectedAgents={selectedAgents}
+        onClearSelection={handleClearSelection}
+      />
     </div>
   );
 }

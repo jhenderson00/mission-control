@@ -19,7 +19,7 @@ describe("ControlPanel", () => {
     const dispatchMock = vi.fn().mockResolvedValue({ ok: true, status: "acked" });
     useActionMock.mockReturnValue(dispatchMock);
 
-    render(<ControlPanel agentId="agent_1" />);
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
     const user = userEvent.setup();
 
     await user.type(
@@ -46,7 +46,7 @@ describe("ControlPanel", () => {
       .mockResolvedValue({ ok: false, status: "failed", error: "nope" });
     useActionMock.mockReturnValue(dispatchMock);
 
-    render(<ControlPanel agentId="agent_1" />);
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: "Resume" }));
@@ -58,7 +58,7 @@ describe("ControlPanel", () => {
     const dispatchMock = vi.fn();
     useActionMock.mockReturnValue(dispatchMock);
 
-    render(<ControlPanel agentId="agent_1" />);
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: "Redirect" }));
@@ -73,7 +73,7 @@ describe("ControlPanel", () => {
     const dispatchMock = vi.fn();
     useActionMock.mockReturnValue(dispatchMock);
 
-    render(<ControlPanel agentId="agent_1" />);
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: "Override priority" }));
@@ -88,7 +88,7 @@ describe("ControlPanel", () => {
     const dispatchMock = vi.fn();
     useActionMock.mockReturnValue(dispatchMock);
 
-    render(<ControlPanel agentId="agent_1" disabled />);
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" disabled />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: "Pause" }));
@@ -99,5 +99,59 @@ describe("ControlPanel", () => {
       )
     ).toBeInTheDocument();
     expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires confirmation before killing the agent", async () => {
+    const dispatchMock = vi.fn().mockResolvedValue({ ok: true, status: "acked" });
+    useActionMock.mockReturnValue(dispatchMock);
+
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Kill" }));
+
+    const confirmButton = screen.getByRole("button", { name: "Confirm kill" });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(
+      screen.getByPlaceholderText("Type Alpha or CONFIRM"),
+      "Alpha"
+    );
+
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "agent.kill" })
+      );
+    });
+  });
+
+  it("requires confirmation before restarting the agent", async () => {
+    const dispatchMock = vi.fn().mockResolvedValue({ ok: true, status: "acked" });
+    useActionMock.mockReturnValue(dispatchMock);
+
+    render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Restart" }));
+
+    const confirmButton = screen.getByRole("button", { name: "Confirm restart" });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(
+      screen.getByPlaceholderText("Type Alpha or CONFIRM"),
+      "CONFIRM"
+    );
+
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "agent.restart" })
+      );
+    });
   });
 });

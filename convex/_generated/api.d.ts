@@ -13,6 +13,7 @@ import type * as controls from "../controls.js";
 import type * as conversations from "../conversations.js";
 import type * as decisions from "../decisions.js";
 import type * as events from "../events.js";
+import type * as http from "../http.js";
 import type * as tasks from "../tasks.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   decisions: typeof decisions;
   events: typeof events;
+  http: typeof http;
   tasks: typeof tasks;
 }>;
 
