@@ -49,6 +49,18 @@ npm run build
 npm run start
 ```
 
+## Health Check
+
+The bridge exposes a health endpoint on the control port:
+
+```
+GET /api/health
+GET /health
+```
+
+If `BRIDGE_CONTROL_SECRET` is configured, include it as a bearer token to
+retrieve a live gateway health snapshot.
+
 ## Notes
 
 - On reconnect, the bridge fetches `system-presence`, `sessions.list`, and

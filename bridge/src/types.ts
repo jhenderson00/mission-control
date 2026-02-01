@@ -90,3 +90,13 @@ export type BridgeConfig = {
   requestTimeoutMs: number;
   agentIdAliases: Record<string, string>;
 };
+
+export type GatewayConnectionState = {
+  connected: boolean;
+  readyState: number | null;
+  reconnecting: boolean;
+  reconnectAttempts: number;
+  lastConnectedAt?: string;
+  lastDisconnectedAt?: string;
+  lastError?: string;
+};
