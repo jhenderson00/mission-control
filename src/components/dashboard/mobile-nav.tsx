@@ -23,7 +23,10 @@ export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const agentCounts = useQuery(api.agents.statusCounts, {});
+  const presenceCounts = useQuery(api.agents.presenceCounts, {});
   const taskCounts = useQuery(api.tasks.statusCounts, {});
+  const agentTotal = agentCounts?.total ?? presenceCounts?.total ?? "—";
+  const openTaskCount = taskCounts ? taskCounts.queued + taskCounts.blocked : undefined;
 
   const navItems = [
     {
@@ -35,7 +38,7 @@ export function MobileNav() {
       href: "/agents",
       label: "Agents",
       icon: Users,
-      badge: agentCounts?.total ?? "—",
+      badge: agentTotal,
     },
     {
       href: "/activity",
@@ -46,7 +49,7 @@ export function MobileNav() {
       href: "/tasks",
       label: "Tasks",
       icon: ListChecks,
-      badge: taskCounts?.queued ?? "—",
+      badge: openTaskCount ?? "—",
     },
     {
       href: "/graph",

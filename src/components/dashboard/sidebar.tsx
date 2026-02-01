@@ -19,7 +19,10 @@ import {
 export function Sidebar() {
   const pathname = usePathname();
   const agentCounts = useQuery(api.agents.statusCounts, {});
+  const presenceCounts = useQuery(api.agents.presenceCounts, {});
   const taskCounts = useQuery(api.tasks.statusCounts, {});
+  const agentTotal = agentCounts?.total ?? presenceCounts?.total ?? "—";
+  const openTaskCount = taskCounts ? taskCounts.queued + taskCounts.blocked : undefined;
 
   const navItems = [
     {
@@ -33,7 +36,7 @@ export function Sidebar() {
       label: "Agents",
       description: "Operators, roles, availability",
       icon: Users,
-      badge: agentCounts?.total ?? "—",
+      badge: agentTotal,
     },
     {
       href: "/activity",
@@ -46,7 +49,7 @@ export function Sidebar() {
       label: "Tasks",
       description: "Queued missions & blockers",
       icon: ListChecks,
-      badge: taskCounts?.queued ?? "—",
+      badge: openTaskCount ?? "—",
     },
     {
       href: "/graph",
@@ -55,7 +58,7 @@ export function Sidebar() {
       icon: Share2,
     },
   ];
-  const activeAgentCount = agentCounts?.active ?? "—";
+  const activeAgentCount = presenceCounts?.active ?? agentCounts?.active ?? "—";
 
   return (
     <aside className="hidden h-full flex-col border-r border-border/60 bg-card/20 px-6 py-8 backdrop-blur lg:flex">

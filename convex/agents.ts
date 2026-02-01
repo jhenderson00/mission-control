@@ -216,6 +216,72 @@ export const statusCounts = query({
 });
 
 /**
+ * Get live presence counts from agentStatus.
+ */
+export const presenceCounts = query({
+  args: {},
+  handler: async (ctx): Promise<{
+    total: number;
+    online: number;
+    offline: number;
+    busy: number;
+    paused: number;
+    active: number;
+  }> => {
+    const statuses = await ctx.db.query("agentStatus").collect();
+    const latestByAgent = new Map<string, Doc<"agentStatus">>();
+
+    for (const status of statuses) {
+      const timestamp = Math.max(status.lastActivity ?? 0, status.lastHeartbeat ?? 0);
+      const existing = latestByAgent.get(status.agentId);
+      if (!existing) {
+        latestByAgent.set(status.agentId, status);
+        continue;
+      }
+      const existingTimestamp = Math.max(
+        existing.lastActivity ?? 0,
+        existing.lastHeartbeat ?? 0
+      );
+      if (timestamp >= existingTimestamp) {
+        latestByAgent.set(status.agentId, status);
+      }
+    }
+
+    const counts = {
+      total: latestByAgent.size,
+      online: 0,
+      offline: 0,
+      busy: 0,
+      paused: 0,
+      active: 0,
+    };
+
+    for (const status of latestByAgent.values()) {
+      switch (status.status) {
+        case "online":
+          counts.online += 1;
+          counts.active += 1;
+          break;
+        case "busy":
+          counts.busy += 1;
+          counts.active += 1;
+          break;
+        case "paused":
+          counts.paused += 1;
+          break;
+        case "offline":
+          counts.offline += 1;
+          break;
+        default:
+          break;
+      }
+    }
+
+    return counts;
+  },
+});
+
+/**
  * List materialized agent status from gateway events.
  */
 export const listStatus = query({

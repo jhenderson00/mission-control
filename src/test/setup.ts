@@ -53,6 +53,7 @@ vi.mock("@/convex/_generated/api", () => ({
   api: {
     agents: {
       statusCounts: "agents.statusCounts",
+      presenceCounts: "agents.presenceCounts",
       listWithTasks: "agents.listWithTasks",
       get: "agents.get",
       listStatus: "agents.listStatus",

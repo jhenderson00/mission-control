@@ -12,6 +12,7 @@ export const api = {
     get: makeFunctionReference<"query">("agents:get"),
     listWithTasks: makeFunctionReference<"query">("agents:listWithTasks"),
     statusCounts: makeFunctionReference<"query">("agents:statusCounts"),
+    presenceCounts: makeFunctionReference<"query">("agents:presenceCounts"),
     listStatus: makeFunctionReference<"query">("agents:listStatus"),
     create: makeFunctionReference<"mutation">("agents:create"),
     updateStatus: makeFunctionReference<"mutation">("agents:updateStatus"),

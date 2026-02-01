@@ -100,6 +100,44 @@ describe("agents functions", () => {
     expect(counts.idle).toBe(1);
   });
 
+  it("computes presence counts from latest agent status", async () => {
+    const ctx = createMockCtx();
+    ctx.db.seed("agentStatus", [
+      {
+        agentId: "agent_alpha",
+        status: "online",
+        lastHeartbeat: 100,
+        lastActivity: 100,
+      },
+      {
+        agentId: "agent_bravo",
+        status: "busy",
+        lastHeartbeat: 200,
+        lastActivity: 200,
+      },
+      {
+        agentId: "agent_alpha",
+        status: "offline",
+        lastHeartbeat: 50,
+        lastActivity: 50,
+      },
+      {
+        agentId: "agent_charlie",
+        status: "paused",
+        lastHeartbeat: 300,
+        lastActivity: 300,
+      },
+    ]);
+
+    const counts = await agents.presenceCounts._handler(ctx, {});
+    expect(counts.total).toBe(3);
+    expect(counts.online).toBe(1);
+    expect(counts.busy).toBe(1);
+    expect(counts.paused).toBe(1);
+    expect(counts.offline).toBe(0);
+    expect(counts.active).toBe(2);
+  });
+
   it("creates an agent", async () => {
     const ctx = createMockCtx();
     const id = await agents.create._handler(ctx, {
