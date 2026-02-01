@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const hasClerkKeys = Boolean(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
@@ -16,21 +16,31 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 /**
- * Sanitizes response headers by removing non-ASCII characters.
+ * Creates a new request with sanitized headers (ASCII only).
  * This prevents MIDDLEWARE_INVOCATION_FAILED errors in Next.js 16
- * when Cloudflare or other proxies add headers with accented characters.
+ * when Cloudflare or other proxies add headers with accented characters
+ * (e.g., cf-ipcity: Montréal).
  */
-function sanitizeHeaders(response: NextResponse): NextResponse {
-  for (const [key, value] of response.headers.entries()) {
-    // Check if header value contains non-ASCII characters
-    if (!/^[\x00-\x7F]*$/.test(value)) {
-      response.headers.delete(key);
+function sanitizeRequestHeaders(req: NextRequest): NextRequest {
+  const sanitizedHeaders = new Headers();
+  
+  for (const [key, value] of req.headers.entries()) {
+    // Only keep headers with ASCII-safe values
+    if (/^[\x00-\x7F]*$/.test(value)) {
+      sanitizedHeaders.set(key, value);
     }
   }
-  return response;
+  
+  return new NextRequest(req.url, {
+    method: req.method,
+    headers: sanitizedHeaders,
+    body: req.body,
+    // @ts-expect-error - NextRequest accepts these but types are incomplete
+    duplex: "half",
+  });
 }
 
-const middleware = hasClerkKeys
+const clerkMw = hasClerkKeys
   ? clerkMiddleware(
       async (auth, req) => {
         if (isPublicRoute(req)) return;
@@ -44,17 +54,10 @@ const middleware = hasClerkKeys
     )
   : () => NextResponse.next();
 
-export default async function wrappedMiddleware(
-  ...args: Parameters<typeof middleware>
-) {
-  const response = await middleware(...args);
-  
-  // Apply header sanitization if we got a response
-  if (response instanceof NextResponse) {
-    return sanitizeHeaders(response);
-  }
-  
-  return response;
+export default async function middleware(req: NextRequest) {
+  // Sanitize request headers before processing to avoid encoding issues
+  const sanitizedReq = sanitizeRequestHeaders(req);
+  return clerkMw(sanitizedReq);
 }
 
 export const config = {
