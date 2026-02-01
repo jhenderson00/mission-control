@@ -6,13 +6,19 @@ import { query, mutation } from "./_generated/server";
  */
 export const listByAgent = query({
   args: {
-    agentId: v.id("agents"),
+    agentId: v.string(),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // Try to normalize as agents table ID
+    const normalizedId = ctx.db.normalizeId("agents", args.agentId);
+    if (!normalizedId) {
+      // Not a valid agents table ID, return empty
+      return [];
+    }
     return await ctx.db
       .query("decisions")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", normalizedId))
       .order("desc")
       .take(args.limit ?? 50);
   },
