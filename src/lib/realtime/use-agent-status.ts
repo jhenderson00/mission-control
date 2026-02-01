@@ -13,6 +13,13 @@ export type AgentStatusRecord = {
   lastActivity: number;
   currentSession?: string;
   sessionInfo?: Record<string, unknown>;
+  workingMemory?: {
+    currentTask: string;
+    status: string;
+    progress?: string;
+    nextSteps: string[];
+    updatedAt: number;
+  };
 };
 
 type UseAgentStatusOptions = {

@@ -46,6 +46,19 @@ const statusUpdateSchema = z.object({
 
 const statusUpdateBatchSchema = z.union([statusUpdateSchema, z.array(statusUpdateSchema)]);
 
+const workingMemorySchema = z.object({
+  agentId: z.string(),
+  currentTask: z.string(),
+  status: z.string(),
+  progress: z.string().optional(),
+  nextSteps: z.array(z.string()).optional(),
+});
+
+const workingMemoryBatchSchema = z.union([
+  workingMemorySchema,
+  z.array(workingMemorySchema),
+]);
+
 function normalizeTimestamp(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
@@ -342,6 +355,61 @@ export const listStatus = query({
 });
 
 /**
+ * List working memory snapshots, optionally scoped to specific agents.
+ */
+export const listWorkingMemory = query({
+  args: {
+    agentIds: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    if (args.agentIds && args.agentIds.length > 0) {
+      const agents = await Promise.all(
+        args.agentIds.map(async (id) => {
+          try {
+            return await ctx.db.get(id as Id<"agents">);
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const bridgeToConvex = new Map<string, string>();
+      const bridgeIds: string[] = [];
+
+      for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
+        const convexId = args.agentIds[i];
+        if (agent?.bridgeAgentId) {
+          bridgeIds.push(agent.bridgeAgentId);
+          bridgeToConvex.set(agent.bridgeAgentId, convexId);
+        } else {
+          bridgeIds.push(convexId);
+        }
+      }
+
+      const results = await Promise.all(
+        bridgeIds.map((bridgeId) =>
+          ctx.db
+            .query("agentWorkingMemory")
+            .withIndex("by_agent", (q) => q.eq("agentId", bridgeId))
+            .take(1)
+        )
+      );
+
+      return results.flat().map((memory) => {
+        const convexId = bridgeToConvex.get(memory.agentId);
+        if (convexId) {
+          return { ...memory, agentId: convexId };
+        }
+        return memory;
+      });
+    }
+
+    return await ctx.db.query("agentWorkingMemory").order("desc").collect();
+  },
+});
+
+/**
  * Update or insert agent presence status.
  */
 export const updateAgentStatus = mutation({
@@ -381,6 +449,58 @@ export const updateAgentStatus = mutation({
 });
 
 /**
+ * Upsert agent working memory snapshot (WORKING.md sync).
+ */
+export const upsertWorkingMemory = mutation({
+  args: {
+    agentId: v.string(),
+    currentTask: v.string(),
+    status: v.string(),
+    progress: v.optional(v.string()),
+    nextSteps: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const workingMemory = {
+      currentTask: args.currentTask,
+      status: args.status,
+      updatedAt: now,
+      nextSteps: args.nextSteps ?? [],
+      ...(args.progress !== undefined ? { progress: args.progress } : {}),
+    };
+
+    const existing = await ctx.db
+      .query("agentWorkingMemory")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .take(1);
+
+    const current = existing[0];
+    let recordId: string;
+    if (current) {
+      await ctx.db.patch(current._id, workingMemory);
+      recordId = current._id;
+    } else {
+      recordId = await ctx.db.insert("agentWorkingMemory", {
+        agentId: args.agentId,
+        ...workingMemory,
+        createdAt: now,
+      });
+    }
+
+    const statusRecord = await ctx.db
+      .query("agentStatus")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .take(1);
+
+    if (statusRecord[0]) {
+      await ctx.db.patch(statusRecord[0]._id, { workingMemory });
+    }
+
+    return await ctx.db.get(recordId);
+  },
+});
+
+/**
  * HTTP endpoint for bridge-driven status updates.
  */
 export const updateAgentStatusHttp = httpAction(
@@ -413,6 +533,78 @@ export const updateAgentStatusHttp = httpAction(
     );
 
     return new Response("ok");
+  }
+);
+
+/**
+ * HTTP endpoint for bridge-driven working memory sync (POST).
+ */
+export const upsertWorkingMemoryHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("invalid json", { status: 400 });
+    }
+
+    const parsed = workingMemoryBatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response("invalid working memory payload", { status: 400 });
+    }
+
+    const updates = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+    await Promise.all(
+      updates.map((update) =>
+        ctx.runMutation(api.agents.upsertWorkingMemory, update)
+      )
+    );
+
+    return new Response("ok");
+  }
+);
+
+/**
+ * HTTP endpoint for bridge-driven working memory fetch (GET).
+ */
+export const listWorkingMemoryHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    const url = new URL(request.url);
+    const explicitAgentIds = url.searchParams.getAll("agentId");
+    const agentIdsParam = url.searchParams.get("agentIds");
+    const agentIds = [
+      ...explicitAgentIds,
+      ...(agentIdsParam
+        ? agentIdsParam
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : []),
+    ];
+
+    const result = await ctx.runQuery(api.agents.listWorkingMemory, {
+      agentIds: agentIds.length > 0 ? agentIds : undefined,
+    });
+
+    return new Response(JSON.stringify(result), {
+      headers: { "content-type": "application/json" },
+    });
   }
 );
 

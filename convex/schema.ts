@@ -6,6 +6,14 @@ import { v } from "convex/values";
  * Based on PRD data models: Agents, Tasks, Events, Decisions
  */
 
+const workingMemoryFields = {
+  currentTask: v.string(),
+  status: v.string(),
+  progress: v.optional(v.string()),
+  nextSteps: v.array(v.string()),
+  updatedAt: v.number(),
+};
+
 export default defineSchema({
   /**
    * Agent - Represents an AI operator in the organization
@@ -138,8 +146,20 @@ export default defineSchema({
     lastActivity: v.number(),
     currentSession: v.optional(v.string()),
     sessionInfo: v.optional(v.any()),
+    workingMemory: v.optional(v.object(workingMemoryFields)),
   })
     .index("by_agent", ["agentId"]),
+
+  /**
+   * Agent Working Memory - Persistent snapshot of WORKING.md content
+   */
+  agentWorkingMemory: defineTable({
+    agentId: v.string(),
+    ...workingMemoryFields,
+    createdAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_updated_at", ["updatedAt"]),
 
   /**
    * Agent Control Operations - Pending control commands

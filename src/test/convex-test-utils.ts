@@ -6,6 +6,7 @@ type TableName =
   | "events"
   | "decisions"
   | "agentStatus"
+  | "agentWorkingMemory"
   | "messages"
   | "agentControlOperations"
   | "agentControlAudits";
@@ -177,6 +178,7 @@ class InMemoryDB {
     events: [],
     decisions: [],
     agentStatus: [],
+    agentWorkingMemory: [],
     messages: [],
     agentControlOperations: [],
     agentControlAudits: [],

@@ -349,6 +349,80 @@ describe("agents functions", () => {
     expect(updated?.currentTaskId).toBe(taskId);
   });
 
+  it("upserts working memory and syncs agent status", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentStatus", {
+      agentId: "agent_memory",
+      status: "online",
+      lastHeartbeat: Date.now(),
+      lastActivity: Date.now(),
+    });
+
+    await agents.upsertWorkingMemory._handler(ctx, {
+      agentId: "agent_memory",
+      currentTask: "Draft working memory doc",
+      status: "in-progress",
+      progress: "first pass",
+      nextSteps: ["Add tests", "Write docs"],
+    });
+
+    const firstRecords = await ctx.db.query("agentWorkingMemory").collect();
+    expect(firstRecords).toHaveLength(1);
+    expect(firstRecords[0].currentTask).toBe("Draft working memory doc");
+
+    const statusRecords = await ctx.db.query("agentStatus").collect();
+    expect(statusRecords[0].workingMemory).toEqual({
+      currentTask: "Draft working memory doc",
+      status: "in-progress",
+      progress: "first pass",
+      nextSteps: ["Add tests", "Write docs"],
+      updatedAt: Date.now(),
+    });
+
+    await agents.upsertWorkingMemory._handler(ctx, {
+      agentId: "agent_memory",
+      currentTask: "Finalize working memory doc",
+      status: "review",
+      nextSteps: ["Ship it"],
+    });
+
+    const secondRecords = await ctx.db.query("agentWorkingMemory").collect();
+    expect(secondRecords).toHaveLength(1);
+    expect(secondRecords[0]._id).toBe(firstRecords[0]._id);
+    expect(secondRecords[0].currentTask).toBe("Finalize working memory doc");
+  });
+
+  it("lists working memory snapshots by agent", async () => {
+    const ctx = createMockCtx();
+    ctx.db.seed("agentWorkingMemory", [
+      {
+        agentId: "agent_alpha",
+        currentTask: "Task 1",
+        status: "active",
+        nextSteps: ["Step A"],
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+      },
+      {
+        agentId: "agent_bravo",
+        currentTask: "Task 2",
+        status: "blocked",
+        nextSteps: ["Step B"],
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+      },
+    ]);
+
+    const all = await agents.listWorkingMemory._handler(ctx, {});
+    expect(all).toHaveLength(2);
+
+    const filtered = await agents.listWorkingMemory._handler(ctx, {
+      agentIds: ["agent_alpha"],
+    });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].agentId).toBe("agent_alpha");
+  });
+
   it("handles status update http payloads", async () => {
     const originalSecret = process.env.BRIDGE_SECRET;
     process.env.BRIDGE_SECRET = "secret";
@@ -403,6 +477,79 @@ describe("agents functions", () => {
 
     expect(validPayload.status).toBe(200);
     expect(ctx.runMutation).toHaveBeenCalledTimes(2);
+
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
+
+  it("handles working memory http payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const ctx = {
+      runMutation: vi.fn(async () => {}),
+      runQuery: vi.fn(async () => [{ agentId: "agent_ok" }]),
+    };
+
+    const unauthorizedPost = await agents.upsertWorkingMemoryHttp(
+      ctx as never,
+      new Request("https://example.test/agents/working-memory", {
+        method: "POST",
+        body: "{}",
+      })
+    );
+    expect(unauthorizedPost.status).toBe(401);
+
+    const invalidJson = await agents.upsertWorkingMemoryHttp(
+      ctx as never,
+      new Request("https://example.test/agents/working-memory", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidPayload = await agents.upsertWorkingMemoryHttp(
+      ctx as never,
+      new Request("https://example.test/agents/working-memory", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{}",
+      })
+    );
+    expect(invalidPayload.status).toBe(400);
+
+    const validPayload = await agents.upsertWorkingMemoryHttp(
+      ctx as never,
+      new Request("https://example.test/agents/working-memory", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify({
+          agentId: "agent_ok",
+          currentTask: "Keep docs current",
+          status: "steady",
+          nextSteps: ["Sync"],
+        }),
+      })
+    );
+
+    expect(validPayload.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(1);
+
+    const unauthorizedGet = await agents.listWorkingMemoryHttp(
+      ctx as never,
+      new Request("https://example.test/agents/working-memory")
+    );
+    expect(unauthorizedGet.status).toBe(401);
+
+    const validGet = await agents.listWorkingMemoryHttp(
+      ctx as never,
+      new Request("https://example.test/agents/working-memory?agentId=agent_ok", {
+        headers: { authorization: "Bearer secret" },
+      })
+    );
+    expect(validGet.status).toBe(200);
+    expect(ctx.runQuery).toHaveBeenCalledTimes(1);
+    await validGet.json();
 
     process.env.BRIDGE_SECRET = originalSecret;
   });
