@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
 import { BulkActionBar } from "@/components/agents/bulk-action-bar";
@@ -220,6 +221,7 @@ export function AgentStatusGrid({
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const agentIdSet = new Set(agentIds);
@@ -239,21 +241,81 @@ export function AgentStatusGrid({
     [agents, selectedAgentIds]
   );
 
-  const handleSelectionChange = (agentId: string, isSelected: boolean) => {
-    setSelectedAgentIds((prev) => {
-      const next = new Set(prev);
-      if (isSelected) {
-        next.add(agentId);
-      } else {
-        next.delete(agentId);
-      }
-      return next;
-    });
-  };
+  const handleSelectionChange = useCallback(
+    (agentId: string, isSelected: boolean) => {
+      setSelectedAgentIds((prev) => {
+        const next = new Set(prev);
+        if (isSelected) {
+          next.add(agentId);
+        } else {
+          next.delete(agentId);
+        }
+        return next;
+      });
+    },
+    []
+  );
 
-  const handleClearSelection = () => {
+  const handleSelectAll = useCallback(
+    (isSelected: boolean) => {
+      if (isSelected) {
+        setSelectedAgentIds(new Set(agentIds));
+      } else {
+        setSelectedAgentIds(new Set());
+      }
+    },
+    [agentIds]
+  );
+
+  const handleClearSelection = useCallback(() => {
     setSelectedAgentIds(new Set());
-  };
+  }, []);
+
+  const totalAgents = agents.length;
+  const selectedCount = selectedAgentIds.size;
+  const isAllSelected = totalAgents > 0 && selectedCount === totalAgents;
+  const isPartiallySelected = selectedCount > 0 && selectedCount < totalAgents;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = isPartiallySelected;
+    }
+  }, [isPartiallySelected]);
+
+  useEffect(() => {
+    if (totalAgents === 0) {
+      return;
+    }
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const tag = target.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isTypingTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && key === "a") {
+        event.preventDefault();
+        handleSelectAll(true);
+        return;
+      }
+
+      if (key === "escape" && selectedCount > 0) {
+        event.preventDefault();
+        handleClearSelection();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleClearSelection, handleSelectAll, selectedCount, totalAgents]);
 
   const { activeAgents, idleAgents, blockedAgents, failedAgents, standbyAgents } =
     useMemo(() => {
@@ -292,30 +354,58 @@ export function AgentStatusGrid({
 
   return (
     <div className={cn("space-y-6", className)}>
-      <div className="flex flex-wrap gap-4 text-sm">
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-primary" />
-          <span className="text-muted-foreground">
-            Active <span className="text-foreground font-medium">{activeAgents.length}</span>
-          </span>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-muted-foreground">
+              Active <span className="text-foreground font-medium">{activeAgents.length}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-zinc-400" />
+            <span className="text-muted-foreground">
+              Idle <span className="text-foreground font-medium">{idleAgents.length}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-amber-400" />
+            <span className="text-muted-foreground">
+              Blocked <span className="text-foreground font-medium">{blockedAgents.length}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-red-400" />
+            <span className="text-muted-foreground">
+              Failed <span className="text-foreground font-medium">{failedAgents.length}</span>
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-zinc-400" />
-          <span className="text-muted-foreground">
-            Idle <span className="text-foreground font-medium">{idleAgents.length}</span>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <label htmlFor="agent-select-all" className="flex items-center gap-2">
+            <input
+              ref={selectAllRef}
+              id="agent-select-all"
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={(event) => handleSelectAll(event.target.checked)}
+              aria-checked={isPartiallySelected ? "mixed" : isAllSelected}
+              disabled={totalAgents === 0}
+              className="h-4 w-4 rounded border-border/60 bg-background/70 text-primary accent-primary"
+            />
+            <span>Select all</span>
+          </label>
+          <span>
+            {selectedCount} of {totalAgents} selected
           </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-amber-400" />
-          <span className="text-muted-foreground">
-            Blocked <span className="text-foreground font-medium">{blockedAgents.length}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-red-400" />
-          <span className="text-muted-foreground">
-            Failed <span className="text-foreground font-medium">{failedAgents.length}</span>
-          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClearSelection}
+            disabled={selectedCount === 0}
+          >
+            Clear selection
+          </Button>
         </div>
       </div>
 

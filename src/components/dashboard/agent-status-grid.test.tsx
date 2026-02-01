@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useAction } from "convex/react";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
 import type { AgentSummary } from "@/lib/agent-types";
@@ -101,9 +101,11 @@ describe("AgentStatusGrid", () => {
 
     render(<AgentStatusGrid agents={agents} />);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Alpha" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Beta" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select Alpha" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select Beta" }));
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    });
 
     expect(dispatchMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -112,5 +114,68 @@ describe("AgentStatusGrid", () => {
         requestId: expect.any(String),
       })
     );
+  });
+
+  it("selects all agents from the header control", () => {
+    const agents: AgentSummary[] = [
+      {
+        _id: "agent_1",
+        name: "Alpha",
+        type: "executor",
+        model: "model-1",
+        status: "active",
+        currentTask: { title: "Task A" },
+        startedAt: Date.now() - 5 * 60 * 1000,
+        host: "local",
+      },
+      {
+        _id: "agent_2",
+        name: "Beta",
+        type: "planner",
+        model: "model-2",
+        status: "idle",
+        host: "local",
+      },
+    ];
+
+    render(<AgentStatusGrid agents={agents} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+
+    expect(screen.getByRole("checkbox", { name: "Select Alpha" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Beta" })).toBeChecked();
+  });
+
+  it("supports keyboard shortcuts for select all and clear", () => {
+    const agents: AgentSummary[] = [
+      {
+        _id: "agent_1",
+        name: "Alpha",
+        type: "executor",
+        model: "model-1",
+        status: "active",
+        currentTask: { title: "Task A" },
+        startedAt: Date.now() - 5 * 60 * 1000,
+        host: "local",
+      },
+      {
+        _id: "agent_2",
+        name: "Beta",
+        type: "planner",
+        model: "model-2",
+        status: "idle",
+        host: "local",
+      },
+    ];
+
+    render(<AgentStatusGrid agents={agents} />);
+
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(screen.getByRole("checkbox", { name: "Select Alpha" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Beta" })).toBeChecked();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("checkbox", { name: "Select Alpha" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select Beta" })).not.toBeChecked();
   });
 });

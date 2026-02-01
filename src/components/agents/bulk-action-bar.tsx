@@ -12,6 +12,14 @@ import {
 } from "@/lib/controls/optimistic-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { OperationStatusBadge } from "@/components/agents/operation-status-badge";
 import {
@@ -91,6 +99,7 @@ export function BulkActionBar({
     (state) => state.updateOperations
   );
   const [pendingAction, setPendingAction] = useState<BulkAction | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [status, setStatus] = useState<DispatchStatus | null>(null);
   const [priority, setPriority] = useState<Priority | "">("");
   const [results, setResults] = useState<Record<string, BulkResult>>({});
@@ -122,10 +131,6 @@ export function BulkActionBar({
         }),
     [results, selectedAgents]
   );
-
-  if (selectedAgents.length === 0) {
-    return null;
-  }
 
   const isBlocked = pendingAction !== null || !bulkDispatch;
 
@@ -302,15 +307,15 @@ export function BulkActionBar({
     await handleBulkDispatch("priority", selectedIds, { priority });
   };
 
-  const handleKill = async () => {
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm(
-        `Kill ${selectedAgents.length} agent session${selectedAgents.length === 1 ? "" : "s"}?`
-      );
-      if (!confirmed) {
-        return;
-      }
+  const handleKill = () => {
+    if (isBlocked) {
+      return;
     }
+    setIsConfirmOpen(true);
+  };
+
+  const handleConfirmKill = async () => {
+    setIsConfirmOpen(false);
     await handleBulkDispatch("kill", selectedIds);
   };
 
@@ -321,8 +326,107 @@ export function BulkActionBar({
     await handleBulkDispatch(lastAction, failedAgentIds, lastParams ?? undefined);
   };
 
+  useEffect(() => {
+    if (selectedAgents.length === 0 && isConfirmOpen) {
+      setIsConfirmOpen(false);
+    }
+  }, [isConfirmOpen, selectedAgents.length]);
+
+  useEffect(() => {
+    if (selectedAgents.length === 0) {
+      return;
+    }
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const tag = target.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || isTypingTarget(event.target)) {
+        return;
+      }
+
+      if (isConfirmOpen) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "p") {
+        event.preventDefault();
+        if (!isBlocked) {
+          void handleBulkDispatch("pause", selectedIds);
+        }
+        return;
+      }
+
+      if (key === "r") {
+        event.preventDefault();
+        if (!isBlocked) {
+          void handleBulkDispatch("resume", selectedIds);
+        }
+        return;
+      }
+
+      if (key === "k") {
+        event.preventDefault();
+        if (!isBlocked) {
+          setIsConfirmOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleBulkDispatch, isBlocked, isConfirmOpen, selectedAgents.length, selectedIds]);
+
+  if (selectedAgents.length === 0) {
+    return null;
+  }
+
   return (
     <div className="sticky bottom-4 z-30">
+      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm kill</DialogTitle>
+            <DialogDescription>
+              This will terminate {selectedAgents.length} agent session
+              {selectedAgents.length === 1 ? "" : "s"} and stop any active work.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+            <p className="text-xs text-muted-foreground mb-2">Agents affected</p>
+            <div className="flex flex-wrap gap-1.5">
+              {selectedAgents.slice(0, 6).map((agent) => (
+                <Badge key={agent._id} variant="outline" className="text-[10px]">
+                  {agent.name}
+                </Badge>
+              ))}
+              {selectedAgents.length > 6 && (
+                <Badge variant="outline" className="text-[10px]">
+                  +{selectedAgents.length - 6} more
+                </Badge>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmKill}
+              disabled={isBlocked}
+            >
+              Kill agents
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="rounded-2xl border border-border/60 bg-card/80 backdrop-blur-lg shadow-lg shadow-black/20">
         <div className="flex flex-col gap-4 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -336,10 +440,22 @@ export function BulkActionBar({
               <Button variant="outline" size="sm" onClick={handlePause} disabled={isBlocked}>
                 <Pause className="mr-2 h-4 w-4" />
                 {pendingAction === "pause" ? "Pausing..." : "Pause"}
+                <span
+                  className="ml-2 hidden items-center rounded border border-border/60 px-1 text-[10px] text-muted-foreground sm:inline-flex"
+                  aria-hidden="true"
+                >
+                  P
+                </span>
               </Button>
               <Button variant="outline" size="sm" onClick={handleResume} disabled={isBlocked}>
                 <PlayCircle className="mr-2 h-4 w-4" />
                 {pendingAction === "resume" ? "Resuming..." : "Resume"}
+                <span
+                  className="ml-2 hidden items-center rounded border border-border/60 px-1 text-[10px] text-muted-foreground sm:inline-flex"
+                  aria-hidden="true"
+                >
+                  R
+                </span>
               </Button>
               <Button
                 variant="destructive"
@@ -349,6 +465,12 @@ export function BulkActionBar({
               >
                 <ShieldAlert className="mr-2 h-4 w-4" />
                 {pendingAction === "kill" ? "Killing..." : "Kill"}
+                <span
+                  className="ml-2 hidden items-center rounded border border-border/60 px-1 text-[10px] text-muted-foreground sm:inline-flex"
+                  aria-hidden="true"
+                >
+                  K
+                </span>
               </Button>
               <Button
                 variant="ghost"
@@ -377,6 +499,14 @@ export function BulkActionBar({
               <span>{status.message}</span>
             </div>
           )}
+          <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+            <span>Shortcuts:</span>
+            <span>P Pause</span>
+            <span>R Resume</span>
+            <span>K Kill</span>
+            <span>Esc Clear</span>
+            <span>Cmd/Ctrl+A Select all</span>
+          </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
