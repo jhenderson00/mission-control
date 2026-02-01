@@ -241,7 +241,7 @@ export function BulkActionBar({
       if (response.operations.length > 0) {
         updateOptimisticOperations(
           Object.fromEntries(
-            response.operations.map((operation) => [
+            response.operations.map((operation: { agentId: string; operationId: string; status: string }) => [
               operation.operationId,
               {
                 status: operation.status,
