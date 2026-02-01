@@ -8,10 +8,11 @@ import { useStateSync } from "./state-sync";
 
 export type AgentStatusRecord = {
   agentId: string;
-  status: "online" | "degraded" | "offline";
+  status: "online" | "offline" | "busy" | "paused";
   lastHeartbeat: number;
   lastActivity: number;
   currentSession?: string;
+  sessionInfo?: Record<string, unknown>;
 };
 
 type UseAgentStatusOptions = {

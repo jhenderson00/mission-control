@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { z } from "zod";
 import type { Doc } from "./_generated/dataModel";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { api } from "./_generated/api";
+import { query, mutation, internalMutation, httpAction } from "./_generated/server";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -12,6 +13,13 @@ const eventValidator = v.object({
   sequence: v.number(),
   payload: v.any(),
 });
+
+const agentStatusValidator = v.union(
+  v.literal("online"),
+  v.literal("offline"),
+  v.literal("busy"),
+  v.literal("paused")
+);
 
 const presencePayloadSchema = z
   .object({
@@ -29,12 +37,38 @@ const presencePayloadSchema = z
   })
   .passthrough();
 
+const statusUpdateSchema = z.object({
+  agentId: z.string(),
+  status: z.enum(["online", "offline", "busy", "paused"]),
+  lastSeen: z.number(),
+  sessionInfo: z.unknown().optional(),
+});
+
+const statusUpdateBatchSchema = z.union([statusUpdateSchema, z.array(statusUpdateSchema)]);
+
 function normalizeTimestamp(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
   }
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function resolveString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function resolveSessionKeyFromInfo(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    resolveString(record.sessionKey) ??
+    resolveString(record.session_key) ??
+    resolveString(record.sessionId) ??
+    resolveString(record.session_id)
+  );
 }
 
 async function upsertStatus(
@@ -45,21 +79,55 @@ async function upsertStatus(
     lastHeartbeat: number;
     lastActivity: number;
     currentSession?: string;
-    status: "online" | "degraded" | "offline";
+    status: "online" | "offline" | "busy" | "paused";
+    sessionInfo?: unknown;
+  }
+  , options?: {
+    existing?: Doc<"agentStatus"> | null;
+    preservePaused?: boolean;
+    preserveBusy?: boolean;
   }
 ): Promise<string> {
-  const existing = await ctx.db
-    .query("agentStatus")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .withIndex("by_agent", (q: any) => q.eq("agentId", status.agentId))
-    .take(1);
+  const existing =
+    options && "existing" in options
+      ? options.existing
+        ? [options.existing]
+        : []
+      : await ctx.db
+          .query("agentStatus")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .withIndex("by_agent", (q: any) => q.eq("agentId", status.agentId))
+          .take(1);
 
-  if (existing.length > 0) {
-    await ctx.db.patch(existing[0]._id, status);
-    return existing[0]._id;
+  const current = existing[0];
+  let nextStatus = status.status;
+  if (current) {
+    if (options?.preservePaused && current.status === "paused" && nextStatus !== "offline") {
+      nextStatus = "paused";
+    }
+    if (options?.preserveBusy && current.status === "busy" && nextStatus === "online") {
+      nextStatus = "busy";
+    }
   }
 
-  return await ctx.db.insert("agentStatus", status);
+  const nextSessionInfo = status.sessionInfo ?? current?.sessionInfo;
+  const nextCurrentSession =
+    status.status === "offline"
+      ? undefined
+      : status.currentSession ?? current?.currentSession;
+  const payload = {
+    ...status,
+    status: nextStatus,
+    currentSession: nextCurrentSession,
+    sessionInfo: nextSessionInfo,
+  };
+
+  if (current) {
+    await ctx.db.patch(current._id, payload);
+    return current._id;
+  }
+
+  return await ctx.db.insert("agentStatus", payload);
 }
 
 /**
@@ -168,6 +236,81 @@ export const listStatus = query({
 });
 
 /**
+ * Update or insert agent presence status.
+ */
+export const updateAgentStatus = mutation({
+  args: {
+    agentId: v.string(),
+    status: agentStatusValidator,
+    lastSeen: v.number(),
+    sessionInfo: v.optional(v.any()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("agentStatus")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_agent", (q: any) => q.eq("agentId", args.agentId))
+      .take(1);
+
+    const current = existing[0] ?? null;
+    const currentSession =
+      args.status === "offline"
+        ? undefined
+        : resolveSessionKeyFromInfo(args.sessionInfo) ??
+          current?.currentSession;
+
+    await upsertStatus(
+      ctx,
+      {
+        agentId: args.agentId,
+        status: args.status,
+        lastHeartbeat: args.lastSeen,
+        lastActivity: args.lastSeen,
+        currentSession,
+        sessionInfo: args.sessionInfo ?? current?.sessionInfo,
+      },
+      { existing: current }
+    );
+  },
+});
+
+/**
+ * HTTP endpoint for bridge-driven status updates.
+ */
+export const updateAgentStatusHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("invalid json", { status: 400 });
+    }
+
+    const parsed = statusUpdateBatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response("invalid status payload", { status: 400 });
+    }
+
+    const updates = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+    await Promise.all(
+      updates.map((update) =>
+        ctx.runMutation(api.agents.updateAgentStatus, update)
+      )
+    );
+
+    return new Response("ok");
+  }
+);
+
+/**
  * Create a new agent
  */
 export const create = mutation({
@@ -261,13 +404,18 @@ export const updateStatusFromEvent = internalMutation({
       if (parsed.success && parsed.data.entries && parsed.data.entries.length > 0) {
         await Promise.all(
           parsed.data.entries.map((entry) =>
-            upsertStatus(ctx, {
-              agentId: entry.deviceId,
-              status: "online",
-              lastHeartbeat: normalizeTimestamp(entry.lastSeen, eventTime),
-              lastActivity: normalizeTimestamp(entry.lastSeen, eventTime),
-              currentSession: event.sessionKey,
-            })
+            upsertStatus(
+              ctx,
+              {
+                agentId: entry.deviceId,
+                status: "online",
+                lastHeartbeat: normalizeTimestamp(entry.lastSeen, eventTime),
+                lastActivity: normalizeTimestamp(entry.lastSeen, eventTime),
+                currentSession: event.sessionKey,
+                sessionInfo: entry,
+              },
+              { preservePaused: true, preserveBusy: true }
+            )
           )
         );
         return;
@@ -275,13 +423,17 @@ export const updateStatusFromEvent = internalMutation({
     }
 
     if (event.eventType === "heartbeat" || event.eventType === "presence") {
-      await upsertStatus(ctx, {
-        agentId: event.agentId,
-        status: "online",
-        lastHeartbeat: eventTime,
-        lastActivity: eventTime,
-        currentSession: event.sessionKey,
-      });
+      await upsertStatus(
+        ctx,
+        {
+          agentId: event.agentId,
+          status: "online",
+          lastHeartbeat: eventTime,
+          lastActivity: eventTime,
+          currentSession: event.sessionKey,
+        },
+        { preservePaused: true, preserveBusy: true }
+      );
     }
   },
 });
