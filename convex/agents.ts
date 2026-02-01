@@ -159,9 +159,13 @@ export const list = query({
  * Get a single agent by ID
  */
 export const get = query({
-  args: { id: v.id("agents") },
+  args: { id: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const normalizedId = ctx.db.normalizeId("agents", args.id);
+    if (!normalizedId) {
+      return null;
+    }
+    return await ctx.db.get(normalizedId);
   },
 });
 
