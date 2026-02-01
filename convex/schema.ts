@@ -13,6 +13,7 @@ export default defineSchema({
   agents: defineTable({
     // Identity
     name: v.string(),
+    bridgeAgentId: v.optional(v.string()), // Maps to agentId from bridge (e.g. "main" for Cydni)
     type: v.union(
       v.literal("coordinator"),
       v.literal("planner"),
