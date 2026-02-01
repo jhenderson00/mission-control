@@ -38,6 +38,18 @@ export class GatewayClient extends EventEmitter {
     this.emit("connected", this.helloSnapshot);
   }
 
+  async call(method: string, params?: unknown): Promise<unknown> {
+    return this.request(method, params);
+  }
+
+  async send(sessionKey: string, message: string): Promise<unknown> {
+    return this.request("send", { sessionKey, message });
+  }
+
+  async healthCheck(): Promise<unknown> {
+    return this.request("health");
+  }
+
   async request(method: string, params?: unknown): Promise<unknown> {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -97,7 +109,7 @@ export class GatewayClient extends EventEmitter {
   }
 
   private async authenticate(): Promise<void> {
-    await this.request("connect", {
+    const result = await this.request("connect", {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
@@ -110,6 +122,18 @@ export class GatewayClient extends EventEmitter {
       scopes: ["operator.read"],
       auth: { token: this.config.gatewayToken },
     });
+
+    if (isHelloOkFrame(result)) {
+      this.helloSnapshot = result;
+      this.emit("hello", result);
+      return;
+    }
+
+    if (this.helloSnapshot) {
+      return;
+    }
+
+    throw new Error("Gateway connect handshake failed");
   }
 
   private handleMessage(data: WebSocket.RawData): void {
@@ -193,4 +217,12 @@ export class GatewayClient extends EventEmitter {
       }
     }, delay);
   }
+}
+
+function isHelloOkFrame(payload: unknown): payload is HelloOkFrame {
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    (payload as { type?: string }).type === "hello-ok"
+  );
 }

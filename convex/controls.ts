@@ -106,6 +106,15 @@ type BridgeAck = {
   error?: string;
 };
 
+type BridgeControlPayload = {
+  agentId?: string;
+  agentIds?: string[];
+  command: string;
+  params?: Record<string, unknown>;
+  requestId?: string;
+  requestedBy?: string;
+};
+
 const bridgeAckSchema = z
   .object({
     requestId: z.string(),
@@ -179,9 +188,7 @@ function resolveBridgeConfig(): { url: string; secret: string } {
 }
 
 async function dispatchToBridge(
-  method: string,
-  params: Record<string, unknown>,
-  requestedBy: string
+  controlPayload: BridgeControlPayload
 ): Promise<BridgeAck> {
   const { url, secret } = resolveBridgeConfig();
   const response = await fetch(url, {
@@ -190,15 +197,15 @@ async function dispatchToBridge(
       "content-type": "application/json",
       authorization: `Bearer ${secret}`,
     },
-    body: JSON.stringify({ method, params, requestedBy }),
+    body: JSON.stringify(controlPayload),
   });
 
   if (!response.ok) {
     throw new Error(`Bridge responded with ${response.status}`);
   }
 
-  const payload = await response.json();
-  const parsed = bridgeAckSchema.safeParse(payload);
+  const responsePayload = await response.json();
+  const parsed = bridgeAckSchema.safeParse(responsePayload);
   if (!parsed.success) {
     throw new Error("Invalid bridge response");
   }
@@ -389,11 +396,13 @@ export const dispatch = action({
 
     let bridgeAck: BridgeAck | null = null;
     try {
-      bridgeAck = await dispatchToBridge(command, {
+      bridgeAck = await dispatchToBridge({
         agentId: parsed.data.agentId,
+        command,
         requestId,
-        ...params,
-      }, requestedBy);
+        params,
+        requestedBy,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Bridge error";
       await ctx.runMutation(internal.controls.updateOperationStatus, {
@@ -558,16 +567,13 @@ export const bulkDispatch = action({
 
     let bridgeAck: BridgeAck | null = null;
     try {
-      bridgeAck = await dispatchToBridge(
-        "agents.bulk",
-        {
-          agentIds: parsed.data.agentIds,
-          command,
-          params,
-          requestId,
-        },
-        requestedBy
-      );
+      bridgeAck = await dispatchToBridge({
+        agentIds: parsed.data.agentIds,
+        command,
+        requestId,
+        params,
+        requestedBy,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Bridge error";
       if (operationIds.length > 0) {
@@ -688,6 +694,20 @@ export const listActiveByAgent = query({
   },
 });
 
+export const operationsByAgent = query({
+  args: {
+    agentId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await ctx.db
+      .query("agentControlOperations")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .order("desc")
+      .take(args.limit ?? 50);
+  },
+});
+
 export const listRecentByOperator = query({
   args: {
     requestedBy: v.string(),
@@ -723,6 +743,20 @@ const auditOutcomeValidator = v.union(
 );
 
 export const listAuditsByAgent = query({
+  args: {
+    agentId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
+    return await ctx.db
+      .query("agentControlAudits")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .order("desc")
+      .take(args.limit ?? 50);
+  },
+});
+
+export const auditByAgent = query({
   args: {
     agentId: v.string(),
     limit: v.optional(v.number()),

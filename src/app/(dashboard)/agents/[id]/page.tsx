@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { ConversationView } from "@/components/conversation/conversation-view";
 import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
 import { ControlPanel } from "@/components/agents/control-panel";
+import { PendingOperations } from "@/components/agents/pending-operations";
+import { AuditLog } from "@/components/agents/audit-log";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +97,14 @@ export default function AgentDetailPage({
   const agent = useQuery(api.agents.get, { id: agentId });
   const events = useQuery(api.events.listByAgent, { agentId });
   const decisions = useQuery(api.decisions.listByAgent, { agentId });
+  const operations = useQuery(
+    api.controls.operationsByAgent,
+    !hasConvex ? "skip" : { agentId }
+  );
+  const audits = useQuery(
+    api.controls.auditByAgent,
+    !hasConvex ? "skip" : { agentId }
+  );
   const { statusByAgent } = useAgentStatus({ agentIds: [agentId] });
   const currentTask = useQuery(
     api.tasks.get,
@@ -120,6 +130,12 @@ export default function AgentDetailPage({
   const decisionList: DecisionItem[] = hasConvex
     ? decisions ?? []
     : fallbackDecisions;
+
+  const isLoadingOperations = hasConvex && operations === undefined;
+  const operationList = hasConvex ? operations ?? [] : [];
+
+  const isLoadingAudits = hasConvex && audits === undefined;
+  const auditList = hasConvex ? audits ?? [] : [];
 
   if (isLoadingAgent) {
     return (
@@ -198,7 +214,16 @@ export default function AgentDetailPage({
             </CardContent>
           </Card>
 
-          <ControlPanel agentId={agentId} disabled={!hasConvex} />
+          <ControlPanel
+            agentId={agentId}
+            agentName={agentData.name}
+            disabled={!hasConvex}
+          />
+
+          <PendingOperations
+            operations={operationList}
+            isLoading={isLoadingOperations}
+          />
         </div>
 
         <Card className="border-border/60 bg-card/40">
@@ -291,6 +316,8 @@ export default function AgentDetailPage({
           )}
         </CardContent>
       </Card>
+
+      <AuditLog audits={auditList} isLoading={isLoadingAudits} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import DashboardPage from "@/app/(dashboard)/page";
 
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
+  useAction: vi.fn(),
   useConvexConnectionState: () => ({
     isWebSocketConnected: true,
     hasEverConnected: true,

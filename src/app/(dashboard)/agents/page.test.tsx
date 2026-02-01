@@ -5,6 +5,7 @@ import AgentsPage from "@/app/(dashboard)/agents/page";
 
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
+  useAction: vi.fn(),
   useConvexConnectionState: () => ({
     isWebSocketConnected: true,
     hasEverConnected: true,
