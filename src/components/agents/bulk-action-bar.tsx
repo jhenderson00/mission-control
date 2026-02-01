@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { OperationStatusBadge } from "@/components/agents/operation-status-badge";
 import {
@@ -100,6 +101,7 @@ export function BulkActionBar({
   );
   const [pendingAction, setPendingAction] = useState<BulkAction | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [killConfirmation, setKillConfirmation] = useState("");
   const [status, setStatus] = useState<DispatchStatus | null>(null);
   const [priority, setPriority] = useState<Priority | "">("");
   const [results, setResults] = useState<Record<string, BulkResult>>({});
@@ -133,6 +135,25 @@ export function BulkActionBar({
   );
 
   const isBlocked = pendingAction !== null || !bulkDispatch;
+  const bulkKillCopy = useMemo(() => {
+    if (selectedAgents.length === 1) {
+      const name = selectedAgents[0]?.name?.trim() || "this agent";
+      const phrase = `KILL ${name}`;
+      return { phrase, hint: `${phrase} or CONFIRM` };
+    }
+    const phrase = `KILL ${selectedAgents.length} AGENTS`;
+    return { phrase, hint: `${phrase} or CONFIRM` };
+  }, [selectedAgents]);
+  const killConfirmed = useMemo(() => {
+    const normalized = killConfirmation.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    if (normalized === "confirm") {
+      return true;
+    }
+    return normalized === bulkKillCopy.phrase.toLowerCase();
+  }, [bulkKillCopy.phrase, killConfirmation]);
 
   const setPendingForAgents = (agentIds: string[]) => {
     setResults((prev) => {
@@ -311,11 +332,16 @@ export function BulkActionBar({
     if (isBlocked) {
       return;
     }
+    setKillConfirmation("");
     setIsConfirmOpen(true);
   };
 
   const handleConfirmKill = async () => {
+    if (!killConfirmed) {
+      return;
+    }
     setIsConfirmOpen(false);
+    setKillConfirmation("");
     await handleBulkDispatch("kill", selectedIds);
   };
 
@@ -331,6 +357,10 @@ export function BulkActionBar({
       setIsConfirmOpen(false);
     }
   }, [isConfirmOpen, selectedAgents.length]);
+
+  useEffect(() => {
+    setKillConfirmation("");
+  }, [selectedAgents]);
 
   useEffect(() => {
     if (selectedAgents.length === 0) {
@@ -389,7 +419,15 @@ export function BulkActionBar({
 
   return (
     <div className="sticky bottom-4 z-30">
-      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+      <Dialog
+        open={isConfirmOpen}
+        onOpenChange={(open) => {
+          setIsConfirmOpen(open);
+          if (!open) {
+            setKillConfirmation("");
+          }
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm kill</DialogTitle>
@@ -398,19 +436,43 @@ export function BulkActionBar({
               {selectedAgents.length === 1 ? "" : "s"} and stop any active work.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-xl border border-border/60 bg-background/60 p-3">
-            <p className="text-xs text-muted-foreground mb-2">Agents affected</p>
-            <div className="flex flex-wrap gap-1.5">
-              {selectedAgents.slice(0, 6).map((agent) => (
-                <Badge key={agent._id} variant="outline" className="text-[10px]">
-                  {agent.name}
-                </Badge>
-              ))}
-              {selectedAgents.length > 6 && (
-                <Badge variant="outline" className="text-[10px]">
-                  +{selectedAgents.length - 6} more
-                </Badge>
-              )}
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground mb-2">
+                Agents affected
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedAgents.slice(0, 6).map((agent) => (
+                  <Badge key={agent._id} variant="outline" className="text-[10px]">
+                    {agent.name}
+                  </Badge>
+                ))}
+                {selectedAgents.length > 6 && (
+                  <Badge variant="outline" className="text-[10px]">
+                    +{selectedAgents.length - 6} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+              <p className="text-xs font-semibold text-destructive">
+                Immediate termination
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Killing these sessions interrupts active work and cannot be
+                undone.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Type {bulkKillCopy.hint} to proceed.
+              </p>
+              <Input
+                placeholder={`Type ${bulkKillCopy.hint}`}
+                value={killConfirmation}
+                onChange={(event) => setKillConfirmation(event.target.value)}
+                disabled={isBlocked}
+              />
             </div>
           </div>
           <DialogFooter>
@@ -420,7 +482,7 @@ export function BulkActionBar({
             <Button
               variant="destructive"
               onClick={handleConfirmKill}
-              disabled={isBlocked}
+              disabled={!killConfirmed || isBlocked}
             >
               Kill agents
             </Button>

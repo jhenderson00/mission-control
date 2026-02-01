@@ -144,10 +144,9 @@ describe("BulkActionBar", () => {
   it("requires confirmation before killing", async () => {
     const dispatchMock = vi.fn().mockResolvedValue({
       ok: true,
-      operations: [],
+      operations: [{ agentId: "agent_1", operationId: "op1", status: "acked" }],
     });
     useActionMock.mockReturnValue(dispatchMock);
-    vi.stubGlobal("confirm", vi.fn(() => false));
 
     render(
       <BulkActionBar selectedAgents={[agents[0]]} onClearSelection={vi.fn()} />
@@ -156,6 +155,25 @@ describe("BulkActionBar", () => {
 
     await user.click(screen.getByRole("button", { name: "Kill" }));
 
-    expect(dispatchMock).not.toHaveBeenCalled();
+    const confirmButton = screen.getByRole("button", { name: "Kill agents" });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(
+      screen.getByPlaceholderText("Type KILL Alpha or CONFIRM"),
+      "KILL Alpha"
+    );
+
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentIds: ["agent_1"],
+          command: "agent.kill",
+          requestId: expect.any(String),
+        })
+      );
+    });
   });
 });

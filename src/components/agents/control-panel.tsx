@@ -82,12 +82,20 @@ export function ControlPanel({
   const [killConfirmation, setKillConfirmation] = useState("");
   const [restartConfirmation, setRestartConfirmation] = useState("");
 
-  const normalizedAgentName = agentName?.trim().toLowerCase();
-  const confirmationHint = agentName?.trim()
-    ? `${agentName} or CONFIRM`
-    : "CONFIRM";
+  const trimmedAgentName = agentName?.trim();
+  const agentDisplayName = trimmedAgentName ?? agentId;
 
-  const isConfirmationValid = (value: string) => {
+  const buildConfirmationCopy = (action: "kill" | "restart") => {
+    const actionLabel = action === "kill" ? "KILL" : "RESTART";
+    const phrase = trimmedAgentName ? `${actionLabel} ${trimmedAgentName}` : actionLabel;
+    return {
+      actionLabel,
+      phrase,
+      hint: `${phrase} or CONFIRM`,
+    };
+  };
+
+  const isConfirmationValid = (action: "kill" | "restart", value: string) => {
     const normalized = value.trim().toLowerCase();
     if (!normalized) {
       return false;
@@ -95,14 +103,21 @@ export function ControlPanel({
     if (normalized === "confirm") {
       return true;
     }
-    if (normalizedAgentName) {
-      return normalized === normalizedAgentName;
+    const actionLabel = action === "kill" ? "kill" : "restart";
+    if (normalized === actionLabel) {
+      return true;
+    }
+    if (trimmedAgentName) {
+      return normalized === `${actionLabel} ${trimmedAgentName.toLowerCase()}`;
     }
     return false;
   };
 
-  const killConfirmed = isConfirmationValid(killConfirmation);
-  const restartConfirmed = isConfirmationValid(restartConfirmation);
+  const killConfirmationCopy = buildConfirmationCopy("kill");
+  const restartConfirmationCopy = buildConfirmationCopy("restart");
+
+  const killConfirmed = isConfirmationValid("kill", killConfirmation);
+  const restartConfirmed = isConfirmationValid("restart", restartConfirmation);
 
   const isBlocked = disabled || !dispatch || pendingAction !== null;
   const displayedStatus =
@@ -415,19 +430,49 @@ export function ControlPanel({
                 <DialogHeader>
                   <DialogTitle>Confirm kill</DialogTitle>
                   <DialogDescription>
-                    This will terminate the active session immediately.
+                    This will immediately terminate {agentDisplayName}&apos;s
+                    active session and stop any in-flight work.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Type {confirmationHint} to proceed.
-                  </p>
-                  <Input
-                    placeholder={`Type ${confirmationHint}`}
-                    value={killConfirmation}
-                    onChange={(event) => setKillConfirmation(event.target.value)}
-                    disabled={isBlocked}
-                  />
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Target
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="max-w-[220px] truncate text-[10px]"
+                      >
+                        {agentDisplayName}
+                      </Badge>
+                      {trimmedAgentName && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {agentId}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                    <p className="text-xs font-semibold text-destructive">
+                      Immediate termination
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Killing {agentDisplayName} interrupts running tasks,
+                      disconnects the session, and cannot be undone.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Type {killConfirmationCopy.hint} to proceed.
+                    </p>
+                    <Input
+                      placeholder={`Type ${killConfirmationCopy.hint}`}
+                      value={killConfirmation}
+                      onChange={(event) => setKillConfirmation(event.target.value)}
+                      disabled={isBlocked}
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
@@ -473,19 +518,49 @@ export function ControlPanel({
                 <DialogHeader>
                   <DialogTitle>Confirm restart</DialogTitle>
                   <DialogDescription>
-                    This will restart the agent session and reset its context.
+                    This will restart {agentDisplayName}&apos;s session and reset
+                    its in-memory context.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Type {confirmationHint} to proceed.
-                  </p>
-                  <Input
-                    placeholder={`Type ${confirmationHint}`}
-                    value={restartConfirmation}
-                    onChange={(event) => setRestartConfirmation(event.target.value)}
-                    disabled={isBlocked}
-                  />
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Target
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="max-w-[220px] truncate text-[10px]"
+                      >
+                        {agentDisplayName}
+                      </Badge>
+                      {trimmedAgentName && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {agentId}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                    <p className="text-xs font-semibold text-destructive">
+                      Context reset
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Restarting {agentDisplayName} clears its current context
+                      and interrupts active work before the session is rebuilt.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Type {restartConfirmationCopy.hint} to proceed.
+                    </p>
+                    <Input
+                      placeholder={`Type ${restartConfirmationCopy.hint}`}
+                      value={restartConfirmation}
+                      onChange={(event) => setRestartConfirmation(event.target.value)}
+                      disabled={isBlocked}
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
