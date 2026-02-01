@@ -15,7 +15,7 @@ type ActivityFiltersProps = {
 
 function formatEventType(eventType: string): string {
   return eventType
-    .replace(/_/g, " ")
+    .replace(/[_\.]/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 

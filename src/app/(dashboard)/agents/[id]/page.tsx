@@ -72,6 +72,10 @@ const statusStyles: Record<string, string> = {
   failed: "bg-red-500/15 text-red-300",
 };
 
+function formatEventTypeLabel(eventType: string): string {
+  return eventType.replace(/[_\.]/g, " ");
+}
+
 type EventItem = {
   id?: string;
   _id?: string;
@@ -260,7 +264,7 @@ export default function AgentDetailPage({
                 >
                   <div className="flex items-center justify-between text-xs">
                     <span className="uppercase tracking-wide">
-                      {event.type}
+                      {formatEventTypeLabel(event.type)}
                     </span>
                     <span className="text-muted-foreground">
                       {formatRelativeTime(event.createdAt, "just now")}

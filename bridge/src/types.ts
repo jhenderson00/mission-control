@@ -76,6 +76,9 @@ export type BridgeEvent = {
   timestamp: string;
   sequence: number;
   payload: unknown;
+  sourceEventId?: string;
+  sourceEventType?: string;
+  runId?: string;
 };
 
 export type BridgeConfig = {
