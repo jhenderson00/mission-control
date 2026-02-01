@@ -22,8 +22,10 @@ type UseAgentStatusOptions = {
 export function useAgentStatus(options: UseAgentStatusOptions = {}) {
   useConnectionStatus();
 
+  // Filter out undefined/null values to prevent Convex errors
+  const filteredIds = options.agentIds?.filter((id): id is string => Boolean(id));
   const agentIds =
-    options.agentIds && options.agentIds.length > 0 ? options.agentIds : undefined;
+    filteredIds && filteredIds.length > 0 ? filteredIds : undefined;
   const data = useQuery(api.agents.listStatus, { agentIds });
 
   const sync = useStateSync<AgentStatusRecord>({
