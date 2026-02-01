@@ -175,14 +175,29 @@ function buildGatewayActions(
     case "redirect": {
       const payload =
         params.taskPayload ?? params.text ?? params.message ?? params.task;
-      if (payload === undefined) {
+      if (payload !== undefined) {
+        const message =
+          typeof payload === "string"
+            ? payload
+            : JSON.stringify(payload) ?? String(payload);
+        return [{ type: "send", sessionKey, message }];
+      }
+
+      const taskId = resolveString(params.taskId);
+      if (!taskId) {
         throw new ControlValidationError("Missing task payload");
       }
-      const message =
-        typeof payload === "string"
-          ? payload
-          : JSON.stringify(payload) ?? String(payload);
-      return [{ type: "send", sessionKey, message }];
+      const priority =
+        resolveString(params.priority) ??
+        (typeof params.priority === "number" ? String(params.priority) : null);
+      const messagePayload = priority ? { taskId, priority } : { taskId };
+      return [
+        {
+          type: "send",
+          sessionKey,
+          message: JSON.stringify(messagePayload),
+        },
+      ];
     }
     case "kill":
       return [

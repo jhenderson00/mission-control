@@ -30,7 +30,7 @@ if (!globalThis.matchMedia) {
   })) as typeof window.matchMedia;
 }
 
-if (!Element.prototype.scrollIntoView) {
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
