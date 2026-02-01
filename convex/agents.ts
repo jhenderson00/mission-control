@@ -189,15 +189,23 @@ export const get = query({
 export const getStatus = query({
   args: { id: v.string() },
   handler: async (ctx, args) => {
-    // Try agentStatus table first (most common - linked from grid)
+    // Try agentStatus table first by document ID
     const statusId = ctx.db.normalizeId("agentStatus", args.id);
     if (statusId) {
       return await ctx.db.get(statusId);
     }
-    // Fallback: try agents table
-    const agentId = ctx.db.normalizeId("agents", args.id);
-    if (agentId) {
-      return await ctx.db.get(agentId);
+    // Try agents table by document ID
+    const agentDocId = ctx.db.normalizeId("agents", args.id);
+    if (agentDocId) {
+      return await ctx.db.get(agentDocId);
+    }
+    // Fallback: search agentStatus by agentId string (e.g., "main")
+    const statusByAgentId = await ctx.db
+      .query("agentStatus")
+      .filter((q) => q.eq(q.field("agentId"), args.id))
+      .first();
+    if (statusByAgentId) {
+      return statusByAgentId;
     }
     return null;
   },
