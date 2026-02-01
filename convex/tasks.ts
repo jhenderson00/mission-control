@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { GenericId } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { ensureSubscription } from "./subscriptions";
 
 /**
  * Get all tasks, optionally filtered by status
@@ -119,12 +120,13 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return await ctx.db.insert("tasks", {
+    const assignedAgentIds = args.assignedAgentIds ?? [];
+    const taskId = await ctx.db.insert("tasks", {
       title: args.title,
       description: args.description,
       requester: args.requester,
       priority: args.priority,
-      assignedAgentIds: args.assignedAgentIds ?? [],
+      assignedAgentIds,
       successCriteria: args.successCriteria,
       parentTaskId: args.parentTaskId,
       dueAt: args.dueAt,
@@ -132,6 +134,21 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    if (assignedAgentIds.length > 0) {
+      const uniqueAgentIds = Array.from(new Set(assignedAgentIds));
+      await Promise.all(
+        uniqueAgentIds.map((agentId) =>
+          ensureSubscription(ctx, {
+            taskId,
+            subscriberType: "agent",
+            subscriberId: agentId,
+          })
+        )
+      );
+    }
+
+    return taskId;
   },
 });
 
@@ -196,5 +213,18 @@ export const assignAgents = mutation({
       assignedAgentIds: args.agentIds,
       updatedAt: Date.now(),
     });
+
+    if (args.agentIds.length > 0) {
+      const uniqueAgentIds = Array.from(new Set(args.agentIds));
+      await Promise.all(
+        uniqueAgentIds.map((agentId) =>
+          ensureSubscription(ctx, {
+            taskId: args.id,
+            subscriberType: "agent",
+            subscriberId: agentId,
+          })
+        )
+      );
+    }
   },
 });

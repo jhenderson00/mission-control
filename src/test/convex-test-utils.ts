@@ -5,6 +5,8 @@ type TableName =
   | "tasks"
   | "events"
   | "decisions"
+  | "taskSubscriptions"
+  | "taskComments"
   | "agentStatus"
   | "agentWorkingMemory"
   | "messages"
@@ -177,6 +179,8 @@ class InMemoryDB {
     tasks: [],
     events: [],
     decisions: [],
+    taskSubscriptions: [],
+    taskComments: [],
     agentStatus: [],
     agentWorkingMemory: [],
     messages: [],

@@ -114,6 +114,40 @@ export default defineSchema({
     .index("by_parent", ["parentTaskId"]),
 
   /**
+   * Task Subscriptions - Users/agents following task discussions
+   */
+  taskSubscriptions: defineTable({
+    taskId: v.id("tasks"),
+    subscriberType: v.union(v.literal("user"), v.literal("agent")),
+    subscriberId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId", "createdAt"])
+    .index("by_subscriber", ["subscriberType", "subscriberId", "createdAt"])
+    .index("by_task_subscriber", ["taskId", "subscriberType", "subscriberId"]),
+
+  /**
+   * Task Comments - Discussion messages tied to tasks
+   */
+  taskComments: defineTable({
+    taskId: v.id("tasks"),
+    authorType: v.union(v.literal("user"), v.literal("agent")),
+    authorId: v.string(),
+    body: v.string(),
+    mentions: v.optional(
+      v.array(
+        v.object({
+          subscriberType: v.union(v.literal("user"), v.literal("agent")),
+          subscriberId: v.string(),
+        })
+      )
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId", "createdAt"])
+    .index("by_author", ["authorType", "authorId", "createdAt"]),
+
+  /**
    * Events - Raw events from Gateway (immutable log)
    */
   events: defineTable({
