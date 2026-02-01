@@ -109,7 +109,7 @@ export default function AgentDetailPage({
     !hasConvex ? "skip" : { agentId }
   );
   const audits = useQuery(
-    api.controls.auditByAgent,
+    api.audit.listByAgent,
     !hasConvex ? "skip" : { agentId }
   );
   const { statusByAgent } = useAgentStatus({ agentIds: [agentId] });

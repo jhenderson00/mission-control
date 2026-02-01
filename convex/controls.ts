@@ -422,6 +422,18 @@ export const dispatch = action({
         requestedAt,
         error: message,
       });
+      await ctx.runMutation(internal.audit.recordControlAudit, {
+        action: "control.dispatch",
+        operationId,
+        requestId,
+        agentId: parsed.data.agentId,
+        command,
+        params,
+        outcome: "error",
+        requestedBy,
+        requestedAt,
+        error: message,
+      });
       return {
         ok: false,
         requestId,
@@ -450,6 +462,18 @@ export const dispatch = action({
         requestedAt,
         ackedAt,
       });
+      await ctx.runMutation(internal.audit.recordControlAudit, {
+        action: "control.dispatch",
+        operationId,
+        requestId,
+        agentId: parsed.data.agentId,
+        command,
+        params,
+        outcome: "accepted",
+        requestedBy,
+        requestedAt,
+        ackedAt,
+      });
       return {
         ok: true,
         requestId,
@@ -467,6 +491,19 @@ export const dispatch = action({
       error: errorMessage,
     });
     await ctx.runMutation(internal.controls.recordAudit, {
+      operationId,
+      requestId,
+      agentId: parsed.data.agentId,
+      command,
+      params,
+      outcome: bridgeAck.status === "rejected" ? "rejected" : "error",
+      requestedBy,
+      requestedAt,
+      ackedAt,
+      error: errorMessage,
+    });
+    await ctx.runMutation(internal.audit.recordControlAudit, {
+      action: "control.dispatch",
       operationId,
       requestId,
       agentId: parsed.data.agentId,
@@ -585,8 +622,8 @@ export const bulkDispatch = action({
         });
       }
       await Promise.all(
-        newOperations.map((operation) =>
-          ctx.runMutation(internal.controls.recordAudit, {
+        newOperations.map(async (operation) => {
+          await ctx.runMutation(internal.controls.recordAudit, {
             operationId: operation.operationId,
             requestId,
             bulkId,
@@ -597,8 +634,21 @@ export const bulkDispatch = action({
             requestedBy,
             requestedAt,
             error: message,
-          })
-        )
+          });
+          await ctx.runMutation(internal.audit.recordControlAudit, {
+            action: "control.bulkDispatch",
+            operationId: operation.operationId,
+            requestId,
+            bulkId,
+            agentId: operation.agentId,
+            command,
+            params,
+            outcome: "error",
+            requestedBy,
+            requestedAt,
+            error: message,
+          });
+        })
       );
       return {
         ok: false,
@@ -630,29 +680,45 @@ export const bulkDispatch = action({
     }
 
     await Promise.all(
-      newOperations.map((operation) =>
-        ctx.runMutation(internal.controls.recordAudit, {
+      newOperations.map(async (operation) => {
+        const outcome =
+          bridgeAck.status === "accepted"
+            ? "accepted"
+            : bridgeAck.status === "rejected"
+              ? "rejected"
+              : "error";
+        const error =
+          bridgeAck.status === "accepted"
+            ? undefined
+            : bridgeAck.error ?? "Bridge rejected request";
+        await ctx.runMutation(internal.controls.recordAudit, {
           operationId: operation.operationId,
           requestId,
           bulkId,
           agentId: operation.agentId,
           command,
           params,
-          outcome:
-            bridgeAck.status === "accepted"
-              ? "accepted"
-              : bridgeAck.status === "rejected"
-                ? "rejected"
-                : "error",
+          outcome,
           requestedBy,
           requestedAt,
           ackedAt,
-          error:
-            bridgeAck.status === "accepted"
-              ? undefined
-              : bridgeAck.error ?? "Bridge rejected request",
-        })
-      )
+          error,
+        });
+        await ctx.runMutation(internal.audit.recordControlAudit, {
+          action: "control.bulkDispatch",
+          operationId: operation.operationId,
+          requestId,
+          bulkId,
+          agentId: operation.agentId,
+          command,
+          params,
+          outcome,
+          requestedBy,
+          requestedAt,
+          ackedAt,
+          error,
+        });
+      })
     );
 
     return {
