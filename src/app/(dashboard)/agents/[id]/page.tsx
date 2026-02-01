@@ -10,6 +10,7 @@ import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
 import { ControlPanel } from "@/components/agents/control-panel";
 import { PendingOperations } from "@/components/agents/pending-operations";
 import { AuditLog } from "@/components/agents/audit-log";
+import { useMergedOperations } from "@/lib/controls/optimistic-operations";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,7 +101,7 @@ export default function AgentDetailPage({
   const events = useQuery(api.events.listByAgent, { agentId });
   const decisions = useQuery(api.decisions.listByAgent, { agentId });
   const operations = useQuery(
-    api.controls.operationsByAgent,
+    api.controls.activeByAgent,
     !hasConvex ? "skip" : { agentId }
   );
   const audits = useQuery(
@@ -134,7 +135,9 @@ export default function AgentDetailPage({
     : fallbackDecisions;
 
   const isLoadingOperations = hasConvex && operations === undefined;
-  const operationList = hasConvex ? operations ?? [] : [];
+  const mergedOperations = useMergedOperations(agentId, operations ?? []);
+  const operationList = hasConvex ? mergedOperations : [];
+  const isOperationsLoading = isLoadingOperations && operationList.length === 0;
 
   const isLoadingAudits = hasConvex && audits === undefined;
   const auditList = hasConvex ? audits ?? [] : [];
@@ -229,7 +232,7 @@ export default function AgentDetailPage({
 
           <PendingOperations
             operations={operationList}
-            isLoading={isLoadingOperations}
+            isLoading={isOperationsLoading}
           />
         </div>
 

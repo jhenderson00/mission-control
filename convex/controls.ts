@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import { z } from "zod";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalMutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 type OperationStatus = "queued" | "sent" | "acked" | "failed" | "timed-out";
@@ -679,18 +680,35 @@ export const listActiveByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
-    return await ctx.db
-      .query("agentControlOperations")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
-      .filter((q) =>
-        q.or(
-          q.eq(q.field("status"), activeStatuses[0]),
-          q.eq(q.field("status"), activeStatuses[1]),
-          q.eq(q.field("status"), activeStatuses[2])
-        )
+    return await listActiveByAgentHandler(ctx, args);
+  },
+});
+
+const listActiveByAgentHandler = async (
+  ctx: QueryCtx,
+  args: { agentId: string; limit?: number }
+): Promise<Array<Doc<"agentControlOperations">>> => {
+  return await ctx.db
+    .query("agentControlOperations")
+    .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+    .filter((q) =>
+      q.or(
+        q.eq(q.field("status"), activeStatuses[0]),
+        q.eq(q.field("status"), activeStatuses[1]),
+        q.eq(q.field("status"), activeStatuses[2])
       )
-      .order("desc")
-      .take(args.limit ?? 50);
+    )
+    .order("desc")
+    .take(args.limit ?? 50);
+};
+
+export const activeByAgent = query({
+  args: {
+    agentId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await listActiveByAgentHandler(ctx, args);
   },
 });
 

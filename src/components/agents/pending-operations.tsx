@@ -1,8 +1,8 @@
 "use client";
 
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { OperationEntry } from "@/lib/controls/optimistic-operations";
 import { formatRelativeTime } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
+import { OperationStatusBadge } from "@/components/agents/operation-status-badge";
 import {
   Card,
   CardContent,
@@ -11,22 +11,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AlertCircle, Clock } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 type PendingOperationsProps = {
-  operations: Array<Doc<"agentControlOperations">>;
+  operations: OperationEntry[];
   isLoading: boolean;
-};
-
-const statusStyles: Record<
-  Doc<"agentControlOperations">["status"],
-  { label: string; className: string }
-> = {
-  queued: { label: "Queued", className: "text-amber-300 bg-amber-400/10" },
-  sent: { label: "Sent", className: "text-blue-300 bg-blue-400/10" },
-  acked: { label: "Acked", className: "text-emerald-300 bg-emerald-400/10" },
-  failed: { label: "Failed", className: "text-red-300 bg-red-400/10" },
-  "timed-out": { label: "Timed out", className: "text-red-300 bg-red-400/10" },
 };
 
 export function PendingOperations({
@@ -55,22 +43,16 @@ export function PendingOperations({
 
         {!isLoading &&
           operations.map((operation) => {
-            const status = statusStyles[operation.status];
             return (
               <div
-                key={operation._id}
+                key={operation.operationId}
                 className="rounded-lg border border-border/60 bg-background/50 p-3"
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="font-medium text-foreground">
                     {operation.command}
                   </span>
-                  <Badge
-                    variant="outline"
-                    className={cn("text-[10px] uppercase", status.className)}
-                  >
-                    {status.label}
-                  </Badge>
+                  <OperationStatusBadge status={operation.status} />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
