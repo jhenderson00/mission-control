@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useAction, useQuery } from "convex/react";
 import AgentDetailPage from "@/app/(dashboard)/agents/[id]/page";
@@ -29,14 +29,14 @@ describe("AgentDetailPage", () => {
 
   it("renders details for a known agent", () => {
     process.env.NEXT_PUBLIC_CONVEX_URL = "";
-    render(<AgentDetailPage params={{ id: "agent_1" }} />);
+    render(<AgentDetailPage params={Promise.resolve({ id: "agent_1" })} />);
     expect(screen.getByText("Agent Overview")).toBeInTheDocument();
     expect(screen.getByText("Decision Log")).toBeInTheDocument();
   });
 
   it("renders fallback details for an unknown agent", () => {
     process.env.NEXT_PUBLIC_CONVEX_URL = "";
-    render(<AgentDetailPage params={{ id: "missing" }} />);
+    render(<AgentDetailPage params={Promise.resolve({ id: "missing" })} />);
     expect(screen.getByText("Agent Overview")).toBeInTheDocument();
   });
 
@@ -44,7 +44,7 @@ describe("AgentDetailPage", () => {
     process.env.NEXT_PUBLIC_CONVEX_URL = "https://example.convex.cloud";
     useQueryMock.mockReturnValue(undefined);
 
-    render(<AgentDetailPage params={{ id: "agent_1" }} />);
+    render(<AgentDetailPage params={Promise.resolve({ id: "agent_1" })} />);
     expect(screen.getByText("Loading agent telemetry...")).toBeInTheDocument();
   });
 
@@ -56,7 +56,7 @@ describe("AgentDetailPage", () => {
       .mockReturnValueOnce([])
       .mockReturnValueOnce(null);
 
-    render(<AgentDetailPage params={{ id: "missing" }} />);
+    render(<AgentDetailPage params={Promise.resolve({ id: "missing" })} />);
     expect(screen.getByText("Agent not found")).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { use } from "react";
 import { useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
@@ -89,10 +90,11 @@ type DecisionItem = {
 export default function AgentDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
   const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
-  const agentId = params.id as Id<"agents">;
+  const agentId = id as Id<"agents">;
 
   const agent = useQuery(api.agents.get, { id: agentId });
   const events = useQuery(api.events.listByAgent, { agentId });
@@ -114,7 +116,7 @@ export default function AgentDetailPage({
   );
 
   const fallbackAgent =
-    mockAgents.find((item) => item._id === params.id) ?? mockAgents[0];
+    mockAgents.find((item) => item._id === id) ?? mockAgents[0];
 
   const isLoadingAgent = hasConvex && agent === undefined;
   const agentData = hasConvex ? agent : fallbackAgent;
