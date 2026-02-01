@@ -76,11 +76,14 @@ describe("BulkActionBar", () => {
     await user.click(screen.getByRole("button", { name: "high" }));
     await user.click(screen.getByRole("button", { name: "Override priority" }));
 
-    expect(dispatchMock).toHaveBeenCalledWith({
-      agentIds: ["agent_1"],
-      command: "agent.priority.override",
-      params: { priority: "high" },
-    });
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentIds: ["agent_1"],
+        command: "agent.priority.override",
+        params: { priority: "high" },
+        requestId: expect.any(String),
+      })
+    );
   });
 
   it("retries only failed agents", async () => {
@@ -112,10 +115,13 @@ describe("BulkActionBar", () => {
     await user.click(retryButton);
 
     await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledWith({
-        agentIds: ["agent_1"],
-        command: "agent.pause",
-      });
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentIds: ["agent_1"],
+          command: "agent.pause",
+          requestId: expect.any(String),
+        })
+      );
     });
   });
 

@@ -105,9 +105,12 @@ describe("AgentStatusGrid", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Beta" }));
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
 
-    expect(dispatchMock).toHaveBeenCalledWith({
-      agentIds: ["agent_1", "agent_2"],
-      command: "agent.pause",
-    });
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentIds: ["agent_1", "agent_2"],
+        command: "agent.pause",
+        requestId: expect.any(String),
+      })
+    );
   });
 });

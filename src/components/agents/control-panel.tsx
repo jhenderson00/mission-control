@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { OperationStatus } from "@/lib/controls/operation-status";
+import {
+  createRequestId,
+  useOptimisticOperationsStore,
+} from "@/lib/controls/optimistic-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +62,12 @@ export function ControlPanel({
 }: ControlPanelProps): React.ReactElement {
   // Only call useAction if the API exists to avoid crashes
   const dispatch = hasControlsApi ? useAction(api.controls.dispatch) : null;
+  const addOptimisticOperation = useOptimisticOperationsStore(
+    (state) => state.addOperation
+  );
+  const updateOptimisticOperation = useOptimisticOperationsStore(
+    (state) => state.updateOperation
+  );
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [status, setStatus] = useState<DispatchStatus | null>(null);
 
@@ -123,6 +134,20 @@ export function ControlPanel({
       return;
     }
 
+    const requestId = createRequestId();
+    const requestedAt = Date.now();
+    addOptimisticOperation({
+      operationId: requestId,
+      agentId,
+      command,
+      params,
+      status: "queued",
+      requestedAt,
+      requestedBy: "you",
+      isOptimistic: true,
+    });
+    updateOptimisticOperation(requestId, { status: "sent" });
+
     setPendingAction(actionKey);
     setStatus({ tone: "pending", message: "Dispatching control command..." });
 
@@ -131,6 +156,13 @@ export function ControlPanel({
         agentId,
         command,
         params,
+        requestId,
+      });
+
+      const nextStatus = response.status as OperationStatus;
+      updateOptimisticOperation(requestId, {
+        status: nextStatus,
+        error: response.ok ? undefined : response.error,
       });
 
       if (response.ok) {
@@ -146,6 +178,10 @@ export function ControlPanel({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Command failed";
+      updateOptimisticOperation(requestId, {
+        status: "failed",
+        error: message,
+      });
       setStatus({ tone: "error", message });
     } finally {
       setPendingAction(null);

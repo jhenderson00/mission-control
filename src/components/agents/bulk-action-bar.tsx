@@ -5,9 +5,15 @@ import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import type { AgentSummary } from "@/lib/agent-types";
+import type { OperationStatus } from "@/lib/controls/operation-status";
+import {
+  createRequestId,
+  useOptimisticOperationsStore,
+} from "@/lib/controls/optimistic-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { OperationStatusBadge } from "@/components/agents/operation-status-badge";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -23,8 +29,6 @@ const priorities = ["low", "medium", "high", "critical"] as const;
 type Priority = (typeof priorities)[number];
 
 type BulkAction = "pause" | "resume" | "priority" | "kill";
-
-type OperationStatus = "queued" | "sent" | "acked" | "failed" | "timed-out";
 
 type BulkStatus = OperationStatus | "pending" | "ready";
 
@@ -72,11 +76,20 @@ const statusStyles: Record<BulkStatus, { icon: typeof CheckCircle2; className: s
 
 const hasControlsApi = typeof api.controls?.bulkDispatch !== "undefined";
 
+const isOperationStatus = (status: BulkStatus): status is OperationStatus =>
+  status !== "pending" && status !== "ready";
+
 export function BulkActionBar({
   selectedAgents,
   onClearSelection,
 }: BulkActionBarProps): React.ReactElement | null {
   const bulkDispatch = hasControlsApi ? useAction(api.controls.bulkDispatch) : null;
+  const addOptimisticOperations = useOptimisticOperationsStore(
+    (state) => state.addOperations
+  );
+  const updateOptimisticOperations = useOptimisticOperationsStore(
+    (state) => state.updateOperations
+  );
   const [pendingAction, setPendingAction] = useState<BulkAction | null>(null);
   const [status, setStatus] = useState<DispatchStatus | null>(null);
   const [priority, setPriority] = useState<Priority | "">("");
@@ -167,6 +180,28 @@ export function BulkActionBar({
       return;
     }
 
+    const requestId = createRequestId();
+    const requestedAt = Date.now();
+    const optimisticOperations = agentIds.map((agentId) => ({
+      operationId: `${requestId}:${agentId}`,
+      agentId,
+      command: actionCommandMap[action],
+      params,
+      status: "queued" as const,
+      requestedAt,
+      requestedBy: "you",
+      isOptimistic: true as const,
+    }));
+    addOptimisticOperations(optimisticOperations);
+    updateOptimisticOperations(
+      Object.fromEntries(
+        optimisticOperations.map((operation) => [
+          operation.operationId,
+          { status: "sent" as const },
+        ])
+      )
+    );
+
     setPendingAction(action);
     setStatus({ tone: "pending", message: "Dispatching bulk command..." });
     setPendingForAgents(agentIds);
@@ -178,9 +213,11 @@ export function BulkActionBar({
         agentIds: string[];
         command: "agent.pause" | "agent.resume" | "agent.priority.override" | "agent.kill";
         params?: Record<string, unknown>;
+        requestId?: string;
       } = {
         agentIds,
         command: actionCommandMap[action],
+        requestId,
       };
 
       if (params) {
@@ -201,6 +238,31 @@ export function BulkActionBar({
       }
 
       applyResults(agentIds, response.operations);
+      if (response.operations.length > 0) {
+        updateOptimisticOperations(
+          Object.fromEntries(
+            response.operations.map((operation) => [
+              operation.operationId,
+              {
+                status: operation.status,
+                error: response.ok ? undefined : response.error,
+              },
+            ])
+          )
+        );
+      } else {
+        updateOptimisticOperations(
+          Object.fromEntries(
+            optimisticOperations.map((operation) => [
+              operation.operationId,
+              {
+                status: "failed" as const,
+                error: response.error ?? "Bulk command rejected by bridge.",
+              },
+            ])
+          )
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Bulk command failed";
       setStatus({ tone: "error", message });
@@ -211,6 +273,14 @@ export function BulkActionBar({
         }
         return next;
       });
+      updateOptimisticOperations(
+        Object.fromEntries(
+          optimisticOperations.map((operation) => [
+            operation.operationId,
+            { status: "failed" as const, error: message },
+          ])
+        )
+      );
     } finally {
       setPendingAction(null);
     }
@@ -359,9 +429,16 @@ export function BulkActionBar({
                       <StatusIcon className={cn("h-3.5 w-3.5", statusMeta.className)} />
                       <span className="text-foreground">{agent.name}</span>
                     </div>
-                    <Badge variant="outline" className={cn("text-[10px]", statusMeta.className)}>
-                      {statusLabels[result.status]}
-                    </Badge>
+                    {isOperationStatus(result.status) ? (
+                      <OperationStatusBadge status={result.status} />
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[10px]", statusMeta.className)}
+                      >
+                        {statusLabels[result.status]}
+                      </Badge>
+                    )}
                   </div>
                 );
               })}
