@@ -15,31 +15,6 @@ const isProtectedRoute = createRouteMatcher([
   "/graph(.*)",
 ]);
 
-/**
- * Creates a new request with sanitized headers (ASCII only).
- * This prevents MIDDLEWARE_INVOCATION_FAILED errors in Next.js 16
- * when Cloudflare or other proxies add headers with accented characters
- * (e.g., cf-ipcity: Montréal).
- */
-function sanitizeRequestHeaders(req: NextRequest): NextRequest {
-  const sanitizedHeaders = new Headers();
-  
-  for (const [key, value] of req.headers.entries()) {
-    // Only keep headers with ASCII-safe values
-    if (/^[\x00-\x7F]*$/.test(value)) {
-      sanitizedHeaders.set(key, value);
-    }
-  }
-  
-  return new NextRequest(req.url, {
-    method: req.method,
-    headers: sanitizedHeaders,
-    body: req.body,
-    // @ts-expect-error - NextRequest accepts these but types are incomplete
-    duplex: "half",
-  });
-}
-
 const clerkMw = hasClerkKeys
   ? clerkMiddleware(
       async (auth, req) => {
@@ -55,9 +30,21 @@ const clerkMw = hasClerkKeys
   : () => NextResponse.next();
 
 export default async function middleware(req: NextRequest) {
-  // Sanitize request headers before processing to avoid encoding issues
-  const sanitizedReq = sanitizeRequestHeaders(req);
-  return clerkMw(sanitizedReq);
+  try {
+    return await clerkMw(req);
+  } catch (error) {
+    // Handle encoding errors from non-ASCII headers (e.g., Cloudflare cf-ipcity: Montréal)
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      errorMessage.includes("encode") ||
+      errorMessage.includes("ASCII") ||
+      errorMessage.includes("header")
+    ) {
+      console.warn("[middleware] Header encoding error, allowing request:", errorMessage);
+      return NextResponse.next();
+    }
+    throw error;
+  }
 }
 
 export const config = {
