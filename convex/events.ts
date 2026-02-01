@@ -42,11 +42,39 @@ function normalizeTimestamp(value: string, fallback: number): number {
 
 function summarizePayload(eventType: string, payload: unknown): string {
   if (typeof payload === "string") {
+    // Try to parse stringified JSON content
+    try {
+      const parsed = JSON.parse(payload);
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        if (obj.data && typeof obj.data === "object") {
+          const data = obj.data as Record<string, unknown>;
+          if (typeof data.text === "string") return data.text;
+          if (typeof data.delta === "string") return data.delta;
+        }
+      }
+    } catch {
+      // Not JSON, return as-is
+    }
     return payload;
   }
   if (payload && typeof payload === "object") {
     const record = payload as Record<string, unknown>;
     if (typeof record.content === "string") {
+      // Try to parse stringified JSON content
+      try {
+        const parsed = JSON.parse(record.content);
+        if (parsed && typeof parsed === "object") {
+          const obj = parsed as Record<string, unknown>;
+          if (obj.data && typeof obj.data === "object") {
+            const data = obj.data as Record<string, unknown>;
+            if (typeof data.text === "string") return data.text;
+            if (typeof data.delta === "string") return data.delta;
+          }
+        }
+      } catch {
+        // Not JSON, return as-is
+      }
       return record.content;
     }
     if (record.delta && typeof record.delta === "object") {
