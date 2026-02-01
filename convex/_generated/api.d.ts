@@ -14,6 +14,7 @@ import type * as conversations from "../conversations.js";
 import type * as decisions from "../decisions.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as notifications from "../notifications.js";
 import type * as tasks from "../tasks.js";
 
 import type {
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   decisions: typeof decisions;
   events: typeof events;
   http: typeof http;
+  notifications: typeof notifications;
   tasks: typeof tasks;
 }>;
 

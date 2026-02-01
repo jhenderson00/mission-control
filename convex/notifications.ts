@@ -52,11 +52,13 @@ export const listPending = query({
   },
   handler: async (ctx, args): Promise<Array<Doc<"notifications">>> => {
     const limit = normalizeLimit(args.limit, 50);
-    if (args.recipientType) {
+    const recipientType = args.recipientType;
+    
+    if (recipientType !== undefined) {
       return await ctx.db
         .query("notifications")
         .withIndex("by_status_recipient", (q) =>
-          q.eq("status", "pending").eq("recipientType", args.recipientType)
+          q.eq("status", "pending").eq("recipientType", recipientType)
         )
         .order("asc")
         .take(limit);

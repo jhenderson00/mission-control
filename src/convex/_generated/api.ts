@@ -18,6 +18,11 @@ export const api = {
     updateStatus: makeFunctionReference<"mutation">("agents:updateStatus"),
     remove: makeFunctionReference<"mutation">("agents:remove"),
   },
+  notifications: {
+    listPending: makeFunctionReference<"query">("notifications:listPending"),
+    markDelivered: makeFunctionReference<"mutation">("notifications:markDelivered"),
+    recordAttempt: makeFunctionReference<"mutation">("notifications:recordAttempt"),
+  },
   tasks: {
     list: makeFunctionReference<"query">("tasks:list"),
     get: makeFunctionReference<"query">("tasks:get"),
