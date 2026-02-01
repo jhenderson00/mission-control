@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, NextFetchEvent } from "next/server";
 import type { NextRequest } from "next/server";
 
 const hasClerkKeys = Boolean(
@@ -24,14 +24,14 @@ const clerkMw = hasClerkKeys
     })
   : null;
 
-export default async function middleware(req: NextRequest) {
+export default async function middleware(req: NextRequest, event: NextFetchEvent) {
   // Skip Clerk entirely if not configured
   if (!clerkMw) {
     return NextResponse.next();
   }
 
   try {
-    return await clerkMw(req);
+    return await clerkMw(req, event);
   } catch (error) {
     // Log but don't crash on middleware errors
     console.error("[middleware] Error:", error);
