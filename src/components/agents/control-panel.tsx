@@ -99,7 +99,7 @@ export function ControlPanel({
   );
   const taskOptions = useMemo<TaskOption[]>(
     () =>
-      (tasks ?? []).map((task) => ({
+      (tasks ?? []).map((task: { _id: string; title: string; status: string; priority?: string }) => ({
         id: String(task._id),
         title: task.title,
         status: task.status,
