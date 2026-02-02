@@ -2,6 +2,8 @@
 import http from "http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as controls from "./controls";
+import * as agents from "./agents";
+import * as audit from "./audit";
 import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 import {
   buildGatewayActions,
@@ -147,6 +149,9 @@ async function createMockBridgeServer(
 function createActionCtx() {
   const base = createMockCtx();
   const runMutation = vi.fn(async (_mutation: unknown, args: Record<string, unknown>) => {
+    if ("action" in args) {
+      return asHandler(audit.recordControlAudit)._handler(base, args as never);
+    }
     if ("operationIds" in args) {
       return asHandler(controls.updateOperationStatus)._handler(base, args as never);
     }
@@ -158,6 +163,12 @@ function createActionCtx() {
     }
     throw new Error("Unknown mutation args");
   });
+  const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
+    if ("id" in args) {
+      return asHandler(agents.resolveBridgeAgentId)._handler(base, args as never);
+    }
+    throw new Error("Unknown query args");
+  });
 
   const ctx = {
     ...base,
@@ -165,6 +176,7 @@ function createActionCtx() {
       getUserIdentity: vi.fn().mockResolvedValue({ subject: "user_1" }),
     },
     runMutation,
+    runQuery,
   };
 
   return { ctx, base };
@@ -344,6 +356,9 @@ describe("OpenClaw integration via mock gateway", () => {
     const audits = await base.db.query("agentControlAudits").collect();
     expect(audits).toHaveLength(2);
     expect(audits.map((audit) => audit.outcome)).toEqual(["accepted", "accepted"]);
+
+    const auditLog = await base.db.query("auditLog").collect();
+    expect(auditLog).toHaveLength(2);
   });
 
   it("kills and restarts an agent", async () => {
@@ -430,6 +445,9 @@ describe("OpenClaw integration via mock gateway", () => {
 
     const audits = await base.db.query("agentControlAudits").collect();
     expect(audits).toHaveLength(4);
+
+    const auditLog = await base.db.query("auditLog").collect();
+    expect(auditLog).toHaveLength(4);
   });
 
   it("records errors when gateway is down", async () => {
