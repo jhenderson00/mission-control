@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
+import { DiagnosticPanel } from "@/components/dashboard/diagnostic-panel";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -252,6 +253,8 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <DiagnosticPanel />
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <Card className="border-border/60 bg-card/40">

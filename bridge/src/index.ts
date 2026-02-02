@@ -455,6 +455,7 @@ class Bridge {
         const { events, includesPresence } = buildSubscriptionPlan(hello, [
           "agent",
           "chat",
+          "diagnostic",
           "heartbeat",
           "health",
         ]);
@@ -976,8 +977,14 @@ class Bridge {
     }
     const event = this.normalizeGatewayEvent(frame);
     const derivedEvents = this.buildDerivedEvents(frame, event);
+    const diagnosticDerived = this.buildDiagnosticDerivedEvents(frame, event);
     let shouldFlush = this.buffer.add(event);
     for (const derived of derivedEvents) {
+      if (this.buffer.add(derived)) {
+        shouldFlush = true;
+      }
+    }
+    for (const derived of diagnosticDerived) {
       if (this.buffer.add(derived)) {
         shouldFlush = true;
       }
@@ -1152,6 +1159,53 @@ class Bridge {
     }
 
     return derived;
+  }
+
+  private buildDiagnosticDerivedEvents(
+    frame: GatewayEvent,
+    baseEvent: BridgeEvent
+  ): BridgeEvent[] {
+    if (frame.event === "agent") {
+      return [];
+    }
+
+    const payloadRecord = resolveRecord(frame.payload);
+    if (!payloadRecord) {
+      return [];
+    }
+
+    const status = resolveString(payloadRecord.status);
+    const runId =
+      resolveString(payloadRecord.runId) ?? resolveString(payloadRecord.run_id) ?? undefined;
+    const delta = resolveRecord(payloadRecord.delta);
+
+    const diagnostics = extractDiagnosticEvents(payloadRecord, delta);
+    if (diagnostics.length === 0) {
+      return [];
+    }
+
+    const buildDerived = (eventType: string, payload: Record<string, unknown>): BridgeEvent => {
+      return {
+        eventId: randomUUID(),
+        eventType,
+        agentId: baseEvent.agentId,
+        sessionKey: baseEvent.sessionKey,
+        timestamp: baseEvent.timestamp,
+        sequence: this.nextSequence(),
+        payload,
+        sourceEventId: baseEvent.eventId,
+        sourceEventType: baseEvent.eventType,
+        runId,
+      };
+    };
+
+    return diagnostics.map((diagnostic) => {
+      const payload: Record<string, unknown> = { ...diagnostic.payload };
+      if (status && payload.status === undefined) {
+        payload.status = status;
+      }
+      return buildDerived(diagnostic.eventType, payload);
+    });
   }
 
   private trackSessionActivity(frame: GatewayEvent): void {
