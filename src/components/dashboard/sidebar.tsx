@@ -14,6 +14,7 @@ import {
   Users,
   Rocket,
   Activity,
+  LifeBuoy,
 } from "lucide-react";
 
 export function Sidebar() {
@@ -56,6 +57,12 @@ export function Sidebar() {
       label: "Context Graph",
       description: "Decisions & reasoning chains",
       icon: Share2,
+    },
+    {
+      href: "/help",
+      label: "Help",
+      description: "Guides & feature walkthroughs",
+      icon: LifeBuoy,
     },
   ];
   const activeAgentCount = presenceCounts?.active ?? agentCounts?.active ?? "—";

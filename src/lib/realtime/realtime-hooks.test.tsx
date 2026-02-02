@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useActivityFeed, useAgentStatus, useConversation } from "@/lib/realtime";
 import { useConnectionStore } from "@/lib/realtime/connection-store";
+import type { ConnectionState } from "convex/browser";
 import { useConvexConnectionState, useQuery } from "convex/react";
 
 vi.mock("convex/react", () => ({
@@ -12,9 +13,15 @@ vi.mock("convex/react", () => ({
 const useQueryMock = vi.mocked(useQuery);
 const useConnectionStateMock = vi.mocked(useConvexConnectionState);
 
-const connectedState = {
+const connectedState: ConnectionState = {
+  hasInflightRequests: false,
   isWebSocketConnected: true,
+  timeOfOldestInflightRequest: null,
   hasEverConnected: true,
+  connectionCount: 1,
+  connectionRetries: 0,
+  inflightMutations: 0,
+  inflightActions: 0,
 };
 
 describe("realtime hooks", () => {
