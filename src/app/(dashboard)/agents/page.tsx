@@ -12,14 +12,18 @@ import type { AgentSummary } from "@/lib/agent-types";
 export default function AgentsPage() {
   const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const agents = useQuery(api.agents.listWithTasks, {});
+  const presenceCounts = useQuery(api.agents.presenceCounts, {});
 
   const isLoading = hasConvex && agents === undefined;
   const agentList: AgentSummary[] = hasConvex ? agents ?? [] : allMockAgents;
 
   const onlineCount = isLoading
     ? null
-    : agentList.filter((agent) => agent.status === "active").length;
-  const totalCount = isLoading ? null : agentList.length;
+    : presenceCounts?.active ??
+      agentList.filter((agent) => agent.status === "active").length;
+  const totalCount = isLoading
+    ? null
+    : presenceCounts?.total ?? agentList.length;
 
   return (
     <div className="space-y-8">
@@ -36,7 +40,7 @@ export default function AgentsPage() {
         />
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-2 w-2 rounded-full bg-primary" />
-          <span>{onlineCount ?? "—"} active</span>
+          <span>{onlineCount ?? "—"} online</span>
           <Badge variant="outline">{totalCount ?? "—"} total</Badge>
         </div>
       </div>
