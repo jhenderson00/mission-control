@@ -422,6 +422,7 @@ class Bridge {
     });
     this.gateway.on("disconnected", () => {
       console.warn("[bridge] gateway disconnected");
+      void this.handleGatewayDisconnect();
     });
     this.gateway.on("error", (error: Error) => {
       console.error("[bridge] gateway error", error);
@@ -454,6 +455,7 @@ class Bridge {
         const { events, includesPresence } = buildSubscriptionPlan(hello, [
           "agent",
           "chat",
+          "diagnostic",
           "heartbeat",
           "health",
         ]);
@@ -975,8 +977,14 @@ class Bridge {
     }
     const event = this.normalizeGatewayEvent(frame);
     const derivedEvents = this.buildDerivedEvents(frame, event);
+    const diagnosticDerived = this.buildDiagnosticDerivedEvents(frame, event);
     let shouldFlush = this.buffer.add(event);
     for (const derived of derivedEvents) {
+      if (this.buffer.add(derived)) {
+        shouldFlush = true;
+      }
+    }
+    for (const derived of diagnosticDerived) {
       if (this.buffer.add(derived)) {
         shouldFlush = true;
       }
@@ -1153,6 +1161,53 @@ class Bridge {
     return derived;
   }
 
+  private buildDiagnosticDerivedEvents(
+    frame: GatewayEvent,
+    baseEvent: BridgeEvent
+  ): BridgeEvent[] {
+    if (frame.event === "agent") {
+      return [];
+    }
+
+    const payloadRecord = resolveRecord(frame.payload);
+    if (!payloadRecord) {
+      return [];
+    }
+
+    const status = resolveString(payloadRecord.status);
+    const runId =
+      resolveString(payloadRecord.runId) ?? resolveString(payloadRecord.run_id) ?? undefined;
+    const delta = resolveRecord(payloadRecord.delta);
+
+    const diagnostics = extractDiagnosticEvents(payloadRecord, delta);
+    if (diagnostics.length === 0) {
+      return [];
+    }
+
+    const buildDerived = (eventType: string, payload: Record<string, unknown>): BridgeEvent => {
+      return {
+        eventId: randomUUID(),
+        eventType,
+        agentId: baseEvent.agentId,
+        sessionKey: baseEvent.sessionKey,
+        timestamp: baseEvent.timestamp,
+        sequence: this.nextSequence(),
+        payload,
+        sourceEventId: baseEvent.eventId,
+        sourceEventType: baseEvent.eventType,
+        runId,
+      };
+    };
+
+    return diagnostics.map((diagnostic) => {
+      const payload: Record<string, unknown> = { ...diagnostic.payload };
+      if (status && payload.status === undefined) {
+        payload.status = status;
+      }
+      return buildDerived(diagnostic.eventType, payload);
+    });
+  }
+
   private trackSessionActivity(frame: GatewayEvent): void {
     if (frame.event !== "agent" && frame.event !== "chat") {
       return;
@@ -1294,6 +1349,55 @@ class Bridge {
       }
     } catch (error) {
       console.error("[bridge] failed to update agent statuses", error);
+    }
+  }
+
+  private async handleGatewayDisconnect(): Promise<void> {
+    if (this.presenceAgents.size === 0) {
+      return;
+    }
+
+    const observedAt = Date.now();
+    const updates: AgentStatusUpdate[] = [];
+
+    for (const agentId of this.presenceAgents) {
+      const activity = this.recentActivity.get(agentId);
+      const sessionInfo: Record<string, unknown> = {
+        reason: "gateway_disconnected",
+        lastSeen: observedAt,
+      };
+
+      if (activity?.sessionKey) {
+        sessionInfo.sessionKey = activity.sessionKey;
+      }
+      if (activity?.lastActivity) {
+        sessionInfo.lastActivity = activity.lastActivity;
+      }
+
+      updates.push({
+        agentId,
+        status: "offline",
+        lastSeen: observedAt,
+        sessionInfo,
+      });
+    }
+
+    this.presenceAgents.clear();
+
+    try {
+      await this.convex.updateAgentStatuses(updates);
+      if (this.logStatusSync) {
+        const preview = updates
+          .slice(0, 5)
+          .map((update) => `${update.agentId}:${update.status}`)
+          .join(", ");
+        const suffix = updates.length > 5 ? "..." : "";
+        console.log(
+          `[bridge] disconnect sync (${updates.length}): ${preview}${suffix}`
+        );
+      }
+    } catch (error) {
+      console.error("[bridge] failed to sync offline statuses", error);
     }
   }
 
