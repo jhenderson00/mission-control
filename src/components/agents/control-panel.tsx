@@ -405,7 +405,7 @@ export function ControlPanel({
             onChange={(event) => setSessionKey(event.target.value)}
             disabled={isBlocked}
           />
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-4">
             <Dialog
               open={killDialogOpen}
               onOpenChange={(open) => {
@@ -419,7 +419,7 @@ export function ControlPanel({
               }}
             >
               <DialogTrigger asChild>
-                <Button variant="destructive" size="sm" disabled={isBlocked}>
+                <Button variant="destructive" size="default" className="min-h-11" disabled={isBlocked}>
                   <Siren className="mr-2 h-4 w-4" />
                   {pendingAction === "kill" ? "Killing..." : "Kill"}
                 </Button>
@@ -536,7 +536,7 @@ export function ControlPanel({
               }}
             >
               <DialogTrigger asChild>
-                <Button variant="destructive" size="sm" disabled={isBlocked}>
+                <Button variant="destructive" size="default" className="min-h-11" disabled={isBlocked}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   {pendingAction === "restart" ? "Restarting..." : "Restart"}
                 </Button>
