@@ -1,7 +1,10 @@
 import { httpRouter } from "convex/server";
 import { ingest } from "./events";
 import {
+  completeAgentLifecycleHttp,
+  heartbeatAgentLifecycleHttp,
   listWorkingMemoryHttp,
+  startAgentLifecycleHttp,
   syncAgentMetadataHttp,
   updateAgentStatusHttp,
   upsertWorkingMemoryHttp,
@@ -42,6 +45,24 @@ http.route({
   path: "/agents/working-memory",
   method: "GET",
   handler: listWorkingMemoryHttp,
+});
+
+http.route({
+  path: "/agent/start",
+  method: "POST",
+  handler: startAgentLifecycleHttp,
+});
+
+http.route({
+  path: "/agent/heartbeat",
+  method: "POST",
+  handler: heartbeatAgentLifecycleHttp,
+});
+
+http.route({
+  path: "/agent/complete",
+  method: "POST",
+  handler: completeAgentLifecycleHttp,
 });
 
 http.route({
