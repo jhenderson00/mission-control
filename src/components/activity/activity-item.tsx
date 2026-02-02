@@ -18,6 +18,12 @@ const typeTone: Record<string, string> = {
   token_usage: "border-teal-500/30 bg-teal-500/10 text-teal-200",
 };
 
+const diagnosticToneBySeverity: Record<string, string> = {
+  error: "border-red-500/30 bg-red-500/10 text-red-200",
+  warning: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  info: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+};
+
 function formatEventType(eventType: string): string {
   return eventType
     .replace(/[_\.]/g, " ")
@@ -29,6 +35,26 @@ function formatAgentLabel(agentId: string): string {
   return `${agentId.slice(0, 6)}…${agentId.slice(-4)}`;
 }
 
+function resolveTone(eventType: string): string {
+  const direct = typeTone[eventType];
+  if (direct) {
+    return direct;
+  }
+  if (eventType.startsWith("diagnostic")) {
+    if (eventType.includes("error")) {
+      return diagnosticToneBySeverity.error;
+    }
+    if (eventType.includes("warn")) {
+      return diagnosticToneBySeverity.warning;
+    }
+    if (eventType.includes("info")) {
+      return diagnosticToneBySeverity.info;
+    }
+    return "border-violet-500/30 bg-violet-500/10 text-violet-200";
+  }
+  return "border-border/60 bg-muted/40 text-muted-foreground";
+}
+
 type ActivityItemProps = {
   event: ActivityEvent;
 };
@@ -36,7 +62,7 @@ type ActivityItemProps = {
 export function ActivityItem({ event }: ActivityItemProps): React.ReactElement {
   const timeLabel = formatRelativeTime(event.createdAt, "just now");
   const typeLabel = formatEventType(event.type);
-  const tone = typeTone[event.type] ?? "border-border/60 bg-muted/40 text-muted-foreground";
+  const tone = resolveTone(event.type);
   const agentLabel = formatAgentLabel(event.agentId);
 
   return (
