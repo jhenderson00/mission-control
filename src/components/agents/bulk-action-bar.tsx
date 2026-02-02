@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import type { AgentSummary } from "@/lib/agent-types";
@@ -85,6 +85,7 @@ const statusStyles: Record<BulkStatus, { icon: typeof CheckCircle2; className: s
 };
 
 const hasControlsApi = typeof api.controls?.bulkDispatch !== "undefined";
+const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 const isOperationStatus = (status: BulkStatus): status is OperationStatus =>
   status !== "pending" && status !== "ready";
@@ -108,6 +109,12 @@ export function BulkActionBar({
   const [results, setResults] = useState<Record<string, BulkResult>>({});
   const [lastAction, setLastAction] = useState<BulkAction | null>(null);
   const [lastParams, setLastParams] = useState<Record<string, unknown> | null>(null);
+  const [activeBulkId, setActiveBulkId] = useState<string | null>(null);
+
+  const bulkOperations = useQuery(
+    api.controls.listByBulkId,
+    !hasConvex || !activeBulkId ? "skip" : { bulkId: activeBulkId }
+  );
 
   const selectedIds = useMemo(
     () => selectedAgents.map((agent) => agent._id),
@@ -165,6 +172,34 @@ export function BulkActionBar({
       return next;
     });
   };
+
+  useEffect(() => {
+    if (!bulkOperations || bulkOperations.length === 0) {
+      return;
+    }
+    setResults((prev) => {
+      const next = { ...prev };
+      for (const operation of bulkOperations) {
+        next[operation.agentId] = {
+          status: operation.status as BulkStatus,
+          error: operation.error ?? prev[operation.agentId]?.error,
+        };
+      }
+      return next;
+    });
+
+    updateOptimisticOperations(
+      Object.fromEntries(
+        bulkOperations.map((operation) => [
+          operation.operationId,
+          {
+            status: operation.status as OperationStatus,
+            error: operation.error ?? undefined,
+          },
+        ])
+      )
+    );
+  }, [bulkOperations, updateOptimisticOperations]);
 
   const applyResults = (
     agentIds: string[],
@@ -234,6 +269,7 @@ export function BulkActionBar({
     setPendingForAgents(agentIds);
     setLastAction(action);
     setLastParams(params ?? null);
+    setActiveBulkId(requestId);
 
     let ok = false;
     try {

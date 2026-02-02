@@ -3,6 +3,7 @@
 import type { OperationEntry } from "@/lib/controls/optimistic-operations";
 import { formatRelativeTime } from "@/lib/format";
 import { OperationStatusBadge } from "@/components/agents/operation-status-badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -15,11 +16,13 @@ import { AlertCircle, Clock } from "lucide-react";
 type PendingOperationsProps = {
   operations: OperationEntry[];
   isLoading: boolean;
+  onRetry?: (operation: OperationEntry) => void;
 };
 
 export function PendingOperations({
   operations,
   isLoading,
+  onRetry,
 }: PendingOperationsProps): React.ReactElement {
   return (
     <Card className="border-border/60 bg-card/40">
@@ -63,7 +66,20 @@ export function PendingOperations({
                   <span>Operator {operation.requestedBy}</span>
                 </div>
                 {operation.error && (
-                  <p className="mt-2 text-xs text-red-300">{operation.error}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-red-300">{operation.error}</p>
+                    {(operation.status === "failed" ||
+                      operation.status === "timed-out") &&
+                      onRetry && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() => onRetry(operation)}
+                        >
+                          Retry
+                        </Button>
+                      )}
+                  </div>
                 )}
               </div>
             );

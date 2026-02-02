@@ -827,19 +827,47 @@ export const operationsByAgent = query({
   },
 });
 
+const listRecentByOperatorHandler = async (
+  ctx: QueryCtx,
+  args: { requestedBy: string; limit?: number }
+): Promise<Array<Doc<"agentControlOperations">>> => {
+  return await ctx.db
+    .query("agentControlOperations")
+    .withIndex("by_requested_by", (q) => q.eq("requestedBy", args.requestedBy))
+    .order("desc")
+    .take(args.limit ?? 50);
+};
+
 export const listRecentByOperator = query({
   args: {
     requestedBy: v.string(),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
-    return await ctx.db
-      .query("agentControlOperations")
-      .withIndex("by_requested_by", (q) => q.eq("requestedBy", args.requestedBy))
-      .order("desc")
-      .take(args.limit ?? 50);
+    return await listRecentByOperatorHandler(ctx, args);
   },
 });
+
+export const recentByOperator = query({
+  args: {
+    requestedBy: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await listRecentByOperatorHandler(ctx, args);
+  },
+});
+
+const listByBulkIdHandler = async (
+  ctx: QueryCtx,
+  args: { bulkId: string; limit?: number }
+): Promise<Array<Doc<"agentControlOperations">>> => {
+  return await ctx.db
+    .query("agentControlOperations")
+    .withIndex("by_bulk", (q) => q.eq("bulkId", args.bulkId))
+    .order("desc")
+    .take(args.limit ?? 100);
+};
 
 export const listByBulkId = query({
   args: {
@@ -847,11 +875,17 @@ export const listByBulkId = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
-    return await ctx.db
-      .query("agentControlOperations")
-      .withIndex("by_bulk", (q) => q.eq("bulkId", args.bulkId))
-      .order("desc")
-      .take(args.limit ?? 100);
+    return await listByBulkIdHandler(ctx, args);
+  },
+});
+
+export const bulkById = query({
+  args: {
+    bulkId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await listByBulkIdHandler(ctx, args);
   },
 });
 
