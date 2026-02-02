@@ -54,8 +54,8 @@ describe("ControlPanel", () => {
     expect(await screen.findByText("nope")).toBeInTheDocument();
   });
 
-  it("requires a task id for redirect", async () => {
-    const dispatchMock = vi.fn();
+  it("requires a task reference before redirecting", async () => {
+    const dispatchMock = vi.fn().mockResolvedValue({ ok: true, status: "acked" });
     useActionMock.mockReturnValue(dispatchMock);
 
     render(<ControlPanel agentId="agent_1" agentName="Alpha" />);
@@ -63,10 +63,28 @@ describe("ControlPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Redirect" }));
 
-    expect(
-      await screen.findByText("Redirect requires a task ID.")
-    ).toBeInTheDocument();
-    expect(dispatchMock).not.toHaveBeenCalled();
+    const confirmButton = await screen.findByRole("button", {
+      name: "Confirm redirect",
+    });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(
+      screen.getByPlaceholderText("Task ID or search"),
+      "task_123"
+    );
+
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "agent_1",
+          command: "agent.redirect",
+          params: expect.objectContaining({ taskId: "task_123" }),
+        })
+      );
+    });
   });
 
   it("requires a priority override selection", async () => {

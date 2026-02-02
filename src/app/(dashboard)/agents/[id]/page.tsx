@@ -231,6 +231,10 @@ export default function AgentDetailPage({
           <ControlPanel
             agentId={agentId}
             agentName={agentData.name}
+            agentStatus={agentData.status}
+            currentTaskTitle={
+              hasConvex ? currentTask?.title : agentData.currentTask?.title
+            }
             disabled={!hasConvex}
           />
 
