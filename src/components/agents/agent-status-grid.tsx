@@ -125,11 +125,11 @@ function AgentCard({
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
-              <div
-                className="flex items-center"
+              <label
+                htmlFor={checkboxId}
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-transparent transition hover:border-border/60 hover:bg-muted/30"
                 data-selection-control="true"
                 onClick={(event) => {
-                  event.preventDefault();
                   event.stopPropagation();
                 }}
               >
@@ -141,9 +141,9 @@ function AgentCard({
                     onSelectionChange(agent._id, event.target.checked)
                   }
                   aria-label={`Select ${agent.name}`}
-                  className="h-4 w-4 rounded border-border/60 bg-background/70 text-primary accent-primary"
+                  className="h-5 w-5 rounded border-border/60 bg-background/70 text-primary accent-primary"
                 />
-              </div>
+              </label>
               <div
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg",
@@ -382,7 +382,10 @@ export function AgentStatusGrid({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <label htmlFor="agent-select-all" className="flex items-center gap-2">
+          <label
+            htmlFor="agent-select-all"
+            className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/40"
+          >
             <input
               ref={selectAllRef}
               id="agent-select-all"
@@ -391,7 +394,7 @@ export function AgentStatusGrid({
               onChange={(event) => handleSelectAll(event.target.checked)}
               aria-checked={isPartiallySelected ? "mixed" : isAllSelected}
               disabled={totalAgents === 0}
-              className="h-4 w-4 rounded border-border/60 bg-background/70 text-primary accent-primary"
+              className="h-5 w-5 rounded border-border/60 bg-background/70 text-primary accent-primary"
             />
             <span>Select all</span>
           </label>
@@ -403,6 +406,7 @@ export function AgentStatusGrid({
             size="sm"
             onClick={handleClearSelection}
             disabled={selectedCount === 0}
+            className="h-11 px-4 sm:h-8 sm:px-3"
           >
             Clear selection
           </Button>

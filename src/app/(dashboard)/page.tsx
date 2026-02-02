@@ -274,14 +274,16 @@ export default function DashboardPage() {
             {!isMissionPulseLoading &&
               missionPulse.map((item, index) => (
                 <div key={item.id}>
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="text-foreground font-medium">
                         {item.title}
                       </p>
                       <p>{item.detail}</p>
                     </div>
-                    <Badge variant="outline">{item.timeLabel}</Badge>
+                    <Badge variant="outline" className="w-fit shrink-0">
+                      {item.timeLabel}
+                    </Badge>
                   </div>
                   {index !== missionPulse.length - 1 && <Separator />}
                 </div>

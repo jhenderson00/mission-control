@@ -50,7 +50,7 @@ export function ConversationView({
             Streamed dialog between the agent and its operator.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
             {sessionLabel}
           </Badge>
@@ -64,7 +64,7 @@ export function ConversationView({
         </div>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[420px] sm:h-[480px]">
+        <ScrollArea className="h-[320px] sm:h-[420px] lg:h-[480px]">
           <div
             className="flex flex-col gap-4 pr-4"
             aria-live="polite"
