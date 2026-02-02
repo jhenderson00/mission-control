@@ -119,7 +119,9 @@ function loadConfig(): NotificationDaemonConfig {
   const gatewayToken =
     process.env.OPENCLAW_GATEWAY_TOKEN ?? process.env.GATEWAY_TOKEN;
   if (!gatewayToken) {
-    throw new Error("Missing required env var: OPENCLAW_GATEWAY_TOKEN");
+    throw new Error(
+      "Missing required env var: OPENCLAW_GATEWAY_TOKEN (or GATEWAY_TOKEN)"
+    );
   }
   const convexSecret =
     process.env.NOTIFICATION_DAEMON_SECRET ?? process.env.CONVEX_ACTION_SECRET;

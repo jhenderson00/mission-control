@@ -210,10 +210,10 @@ export class GatewayClient extends EventEmitter {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: "gateway-client",
+        id: "mission-control-bridge",
         version: "1.0.0",
         platform: "node",
-        mode: "backend",
+        mode: "operator",
       },
       role: "operator",
       scopes: ["operator.read"],
