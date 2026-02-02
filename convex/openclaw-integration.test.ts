@@ -179,6 +179,9 @@ describe("OpenClaw command translation", () => {
     expect(normalizeCommand("agent.restart")).toBe("restart");
     expect(normalizeCommand("agent.priority.override")).toBe("priority");
     expect(normalizeCommand("agent.priority")).toBe("priority");
+    expect(normalizeCommand("priority.override")).toBe("priority");
+    expect(normalizeCommand("Pause")).toBe("pause");
+    expect(normalizeCommand("RESUME")).toBe("resume");
     expect(normalizeCommand("unknown")).toBeNull();
   });
 
