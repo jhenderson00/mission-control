@@ -1,12 +1,12 @@
 # Mission Control Bridge
 
-This service connects to the Clawdbot Gateway WebSocket, buffers events, and
+This service connects to the OpenClaw Gateway WebSocket, buffers events, and
 pushes batched payloads into Convex via the HTTP ingest action.
 
 ## Requirements
 
 - Node.js 18+
-- Access to Clawdbot Gateway (WebSocket)
+- Access to OpenClaw Gateway (WebSocket)
 - Convex deployment URL and bridge secret
 
 ## Configuration
@@ -14,8 +14,12 @@ pushes batched payloads into Convex via the HTTP ingest action.
 Create an `.env` file (or export variables) with:
 
 ```env
-# Gateway connection
-GATEWAY_URL=ws://localhost:18789
+# Gateway connection (preferred)
+OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
+OPENCLAW_GATEWAY_TOKEN=your-gateway-token
+
+# Legacy env names (still supported)
+GATEWAY_URL=ws://127.0.0.1:18789
 GATEWAY_TOKEN=your-gateway-token
 
 # Convex connection

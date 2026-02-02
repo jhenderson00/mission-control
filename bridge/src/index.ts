@@ -106,7 +106,9 @@ function loadConfig(): BridgeConfig {
   const gatewayToken =
     process.env.OPENCLAW_GATEWAY_TOKEN ?? process.env.GATEWAY_TOKEN;
   if (!gatewayToken) {
-    throw new Error("Missing required env var: OPENCLAW_GATEWAY_TOKEN");
+    throw new Error(
+      "Missing required env var: OPENCLAW_GATEWAY_TOKEN (or GATEWAY_TOKEN)"
+    );
   }
 
   return {
