@@ -1025,7 +1025,7 @@ class Bridge {
 
     const status = resolveString(payloadRecord.status);
     const runId =
-      resolveString(payloadRecord.runId) ?? resolveString(payloadRecord.run_id);
+      resolveString(payloadRecord.runId) ?? resolveString(payloadRecord.run_id) ?? undefined;
     const delta = resolveRecord(payloadRecord.delta);
     const summary = resolveRecord(payloadRecord.summary);
     const deltaType = delta ? resolveString(delta.type) : null;

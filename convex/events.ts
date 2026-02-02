@@ -516,12 +516,15 @@ export const countsByType = query({
   },
   handler: async (ctx, args): Promise<Record<(typeof eventTypes)[number], number>> => {
     const since = args.since;
+    // Limit to 1000 events per type to avoid exceeding Convex read limits (16MB)
+    // TODO: Consider adding a receivedAt index for more efficient time-based queries
     const entries = await Promise.all(
       eventTypes.map(async (type) => {
         const events = await ctx.db
           .query("events")
           .withIndex("by_type", (q) => q.eq("eventType", type))
-          .collect();
+          .order("desc")
+          .take(1000);
         const total = since
           ? events.filter((event) => event.receivedAt >= since).length
           : events.length;
