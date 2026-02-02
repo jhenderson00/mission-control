@@ -231,8 +231,8 @@ describe("events functions", () => {
         "warning: Latency high",
       ])
     );
-    expect(contents.some((content) => content.startsWith("Tool call"))).toBe(true);
-    expect(contents.some((content) => content.includes("tokens"))).toBe(true);
+    expect(contents.some((content: string) => content.startsWith("Tool call"))).toBe(true);
+    expect(contents.some((content: string) => content.includes("tokens"))).toBe(true);
   });
 
   it("stores events idempotently", async () => {
