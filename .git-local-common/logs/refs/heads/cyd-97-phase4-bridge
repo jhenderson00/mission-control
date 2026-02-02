@@ -1,3 +1,0 @@
-0000000000000000000000000000000000000000 bcfaec6445b1c04dc14b5a152c467d7b5acd1e03 Cydni <cydniai@icloud.com> 1769904297 -0600	branch: Created from HEAD
-bcfaec6445b1c04dc14b5a152c467d7b5acd1e03 d0640d8298a3cb1e9462747f967e6533a47cb14d Cydni <cydniai@icloud.com> 1769904297 -0600	commit: feat(bridge): add mission-control-bridge plugin for Clawdbot
-d0640d8298a3cb1e9462747f967e6533a47cb14d aba91f36b696bfdc54fdef5e21bc5de25d4ea157 Cydni <cydniai@icloud.com> 1769909811 -0600	commit: feat(controls): complete Phase 3 agent controls + OpenClaw integration

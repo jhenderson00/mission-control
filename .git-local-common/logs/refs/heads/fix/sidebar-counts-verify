@@ -1,3 +1,0 @@
-0000000000000000000000000000000000000000 5b5750e8a0ab74739c42b90d2e0375dce8d1a1d2 Cydni <cydniai@icloud.com> 1769926139 -0600	branch: Created from main
-5b5750e8a0ab74739c42b90d2e0375dce8d1a1d2 1502071f09607056f5a08f35f10a5bce61b8406e Cydni <cydniai@icloud.com> 1769926792 -0600	commit: fix(sidebar): add presenceCounts for real-time agent status
-1502071f09607056f5a08f35f10a5bce61b8406e 6630dd31b25774ec008ddf641a625a2f7cec6fb8 Cydni <cydniai@icloud.com> 1769926799 -0600	rebase (finish): refs/heads/fix/sidebar-counts-verify onto 73e4d13e346327f3bbc975ca8d51f10d5a948ff1

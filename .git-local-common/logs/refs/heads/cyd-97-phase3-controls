@@ -1,3 +1,0 @@
-0000000000000000000000000000000000000000 a44ebe36986b7a0f7f16f8e8da8765d3ce55bcc8 Cydni <cydniai@icloud.com> 1769901201 -0600	branch: Created from HEAD
-a44ebe36986b7a0f7f16f8e8da8765d3ce55bcc8 a60b7ef72fd74fd6f39759fce857091b077ab446 Cydni <cydniai@icloud.com> 1769901331 -0600	commit: fix: add controls to API stub and fix JSX.Element type
-a60b7ef72fd74fd6f39759fce857091b077ab446 f1e0be415cefcb08646b74fa6ef20a6b5a3837be Cydni <cydniai@icloud.com> 1769902295 -0600	commit: fix: gracefully handle missing controls API in ControlPanel

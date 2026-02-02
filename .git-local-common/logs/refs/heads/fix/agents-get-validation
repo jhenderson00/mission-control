@@ -1,2 +1,0 @@
-0000000000000000000000000000000000000000 5b5750e8a0ab74739c42b90d2e0375dce8d1a1d2 Cydni <cydniai@icloud.com> 1769926139 -0600	branch: Created from main
-5b5750e8a0ab74739c42b90d2e0375dce8d1a1d2 4bb744ff5368977198e3db1103bcacb3892b7314 Cydni <cydniai@icloud.com> 1769926244 -0600	commit: fix(convex): validate agent IDs in get query to prevent crashes
