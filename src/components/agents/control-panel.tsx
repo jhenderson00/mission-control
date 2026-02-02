@@ -8,6 +8,8 @@ import {
   createRequestId,
   useOptimisticOperationsStore,
 } from "@/lib/controls/optimistic-operations";
+import { RedirectDialog, type RedirectPayload } from "@/components/agents/redirect-dialog";
+import { priorityOptions, type Priority } from "@/components/agents/priority";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +31,6 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
-  ArrowRight,
   Flame,
   Loader2,
   Pause,
@@ -38,13 +39,11 @@ import {
   Siren,
 } from "lucide-react";
 
-const priorities = ["low", "medium", "high", "critical"] as const;
-
-type Priority = (typeof priorities)[number];
-
 type ControlPanelProps = {
   agentId: string;
   agentName?: string;
+  agentStatus?: string;
+  currentTaskTitle?: string | null;
   disabled?: boolean;
 };
 
@@ -59,6 +58,8 @@ const hasControlsApi = typeof api.controls?.dispatch !== "undefined";
 export function ControlPanel({
   agentId,
   agentName,
+  agentStatus,
+  currentTaskTitle,
   disabled = false,
 }: ControlPanelProps): React.ReactElement {
   // Only call useAction if the API exists to avoid crashes
@@ -73,8 +74,6 @@ export function ControlPanel({
   const [status, setStatus] = useState<DispatchStatus | null>(null);
 
   const [pauseReason, setPauseReason] = useState("");
-  const [redirectTaskId, setRedirectTaskId] = useState("");
-  const [redirectPriority, setRedirectPriority] = useState<Priority | "">("");
   const [overridePriority, setOverridePriority] = useState<Priority | "">("");
   const [overrideDuration, setOverrideDuration] = useState("");
   const [sessionKey, setSessionKey] = useState("");
@@ -218,16 +217,26 @@ export function ControlPanel({
     await runCommand("resume", "agent.resume");
   };
 
-  const handleRedirect = async (): Promise<void> => {
-    const taskId = redirectTaskId.trim();
-    if (!taskId) {
-      setStatus({ tone: "error", message: "Redirect requires a task ID." });
+  const handleRedirect = async ({
+    taskId,
+    taskPayload,
+    priority,
+  }: RedirectPayload): Promise<void> => {
+    const trimmedTaskId = taskId?.trim();
+    const hasPayload = typeof taskPayload !== "undefined";
+
+    if (!trimmedTaskId && !hasPayload) {
+      setStatus({
+        tone: "error",
+        message: "Redirect requires a task reference or payload.",
+      });
       return;
     }
 
     await runCommand("redirect", "agent.redirect", {
-      taskId,
-      priority: redirectPriority || undefined,
+      taskId: trimmedTaskId || undefined,
+      taskPayload: hasPayload ? taskPayload : undefined,
+      priority: priority || undefined,
     });
   };
 
@@ -320,42 +329,23 @@ export function ControlPanel({
         <Separator className="bg-border/60" />
 
         <div className="space-y-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">Redirect</p>
-            <p className="text-xs text-muted-foreground">
-              Send the agent to a new task immediately.
-            </p>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
-            <Input
-              placeholder="Task ID"
-              value={redirectTaskId}
-              onChange={(event) => setRedirectTaskId(event.target.value)}
-              disabled={isBlocked}
-            />
-            <div className="flex flex-wrap gap-2">
-              {priorities.map((priority) => (
-                <Button
-                  key={priority}
-                  type="button"
-                  size="sm"
-                  variant={redirectPriority === priority ? "secondary" : "outline"}
-                  onClick={() => setRedirectPriority(priority)}
-                  disabled={isBlocked}
-                >
-                  {priority}
-                </Button>
-              ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Redirect</p>
+              <p className="text-xs text-muted-foreground">
+                Send the agent to a new task immediately.
+              </p>
             </div>
+            <RedirectDialog
+              agentId={agentId}
+              agentName={agentName}
+              agentStatus={agentStatus}
+              currentTaskTitle={currentTaskTitle}
+              disabled={isBlocked}
+              pending={pendingAction === "redirect"}
+              onConfirm={handleRedirect}
+            />
           </div>
-          <Button
-            size="sm"
-            onClick={handleRedirect}
-            disabled={isBlocked}
-          >
-            <ArrowRight className="mr-2 h-4 w-4" />
-            {pendingAction === "redirect" ? "Redirecting..." : "Redirect"}
-          </Button>
         </div>
 
         <Separator className="bg-border/60" />
@@ -369,7 +359,7 @@ export function ControlPanel({
           </div>
           <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
             <div className="flex flex-wrap gap-2">
-              {priorities.map((priority) => (
+              {priorityOptions.map((priority) => (
                 <Button
                   key={priority}
                   type="button"
