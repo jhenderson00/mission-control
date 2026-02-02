@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Doc, Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import { query, mutation, internalMutation, httpAction } from "./_generated/server";
-import { normalizeAgentIdForLookup, resolveAgentRecord } from "./agent-linking";
+import { normalizeAgentIdForLookup, resolveAgentRecord } from "./agentLinking";
 
 const eventValidator = v.object({
   eventId: v.string(),

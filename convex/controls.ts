@@ -16,7 +16,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalMutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agent-linking";
+import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agentLinking";
 
 type OperationStatus = "queued" | "sent" | "acked" | "failed" | "timed-out";
 

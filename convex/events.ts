@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { z } from "zod";
 import { httpAction, internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { normalizeAgentIdForLookup, resolveBridgeAgentId } from "./agent-linking";
+import { normalizeAgentIdForLookup, resolveBridgeAgentId } from "./agentLinking";
 
 const eventValidator = v.object({
   eventId: v.string(),

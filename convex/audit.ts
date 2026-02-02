@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, query } from "./_generated/server";
-import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agent-linking";
+import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agentLinking";
 
 const outcomeValidator = v.union(
   v.literal("accepted"),
