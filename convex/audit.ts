@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, query } from "./_generated/server";
-import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agentLinking";
+import { normalizeAgentIdForLookup, resolveAgentLookup } from "./agentLinking";
 
 const outcomeValidator = v.union(
   v.literal("accepted"),
@@ -54,13 +54,25 @@ export const listByAgent = query({
     if (!normalized) {
       return [];
     }
-    const resolved = await resolveConvexAgentId(ctx, normalized);
-    const agentId = resolved ?? normalized;
-    return await ctx.db
-      .query("auditLog")
-      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
-      .order("desc")
-      .take(args.limit ?? 50);
+    const lookup = await resolveAgentLookup(ctx, normalized);
+    const lookupIds = lookup?.lookupIds ?? [normalized];
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("auditLog")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .order("desc")
+          .take(args.limit ?? 50)
+      )
+    );
+    const merged = new Map<string, Doc<"auditLog">>();
+    for (const record of results.flat()) {
+      merged.set(record._id, record);
+    }
+    const sorted = Array.from(merged.values()).sort(
+      (a, b) => b.requestedAt - a.requestedAt
+    );
+    return sorted.slice(0, args.limit ?? 50);
   },
 });
 

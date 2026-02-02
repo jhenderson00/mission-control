@@ -3,7 +3,18 @@ import { z } from "zod";
 import type { Doc, Id } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 import { query, mutation, internalMutation, httpAction } from "./_generated/server";
-import { normalizeAgentIdForLookup, resolveAgentRecord } from "./agentLinking";
+import {
+  normalizeAgentIdForLookup,
+  resolveAgentLookup,
+  resolveAgentRecord,
+  resolveOrCreateAgentRecord,
+} from "./agentLinking";
+import {
+  DEFAULT_AGENT_HOST,
+  DEFAULT_AGENT_MODEL,
+  DEFAULT_AGENT_STATUS,
+  DEFAULT_AGENT_TYPE,
+} from "./agentDefaults";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -142,10 +153,18 @@ function resolveSessionKeyFromInfo(value: unknown): string | undefined {
   );
 }
 
-const DEFAULT_AGENT_TYPE = "executor";
-const DEFAULT_AGENT_MODEL = "unknown";
-const DEFAULT_AGENT_HOST = "gateway";
-const DEFAULT_AGENT_STATUS = "idle";
+function uniqueInOrder(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
 
 async function upsertStatus(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,6 +226,82 @@ async function upsertStatus(
   return await ctx.db.insert("agentStatus", payload);
 }
 
+function selectLatestStatus(
+  statuses: Array<Doc<"agentStatus">>
+): Array<Doc<"agentStatus">> {
+  const latestByAgent = new Map<string, Doc<"agentStatus">>();
+  for (const status of statuses) {
+    const existing = latestByAgent.get(status.agentId);
+    if (!existing) {
+      latestByAgent.set(status.agentId, status);
+      continue;
+    }
+    const nextTimestamp = Math.max(
+      status.lastActivity ?? 0,
+      status.lastHeartbeat ?? 0
+    );
+    const existingTimestamp = Math.max(
+      existing.lastActivity ?? 0,
+      existing.lastHeartbeat ?? 0
+    );
+    if (nextTimestamp >= existingTimestamp) {
+      latestByAgent.set(status.agentId, status);
+    }
+  }
+  return Array.from(latestByAgent.values());
+}
+
+function selectLatestWorkingMemory(
+  memories: Array<Doc<"agentWorkingMemory">>
+): Array<Doc<"agentWorkingMemory">> {
+  const latestByAgent = new Map<string, Doc<"agentWorkingMemory">>();
+  for (const memory of memories) {
+    const existing = latestByAgent.get(memory.agentId);
+    if (!existing || memory.updatedAt >= existing.updatedAt) {
+      latestByAgent.set(memory.agentId, memory);
+    }
+  }
+  return Array.from(latestByAgent.values());
+}
+
+async function findStatusRecord(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  agentIds: string[]
+): Promise<Doc<"agentStatus"> | null> {
+  const ordered = uniqueInOrder(agentIds);
+  for (const agentId of ordered) {
+    const existing = await ctx.db
+      .query("agentStatus")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_agent", (q: any) => q.eq("agentId", agentId))
+      .take(1);
+    if (existing[0]) {
+      return existing[0];
+    }
+  }
+  return null;
+}
+
+async function findWorkingMemoryRecord(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  agentIds: string[]
+): Promise<Doc<"agentWorkingMemory"> | null> {
+  const ordered = uniqueInOrder(agentIds);
+  for (const agentId of ordered) {
+    const existing = await ctx.db
+      .query("agentWorkingMemory")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_agent", (q: any) => q.eq("agentId", agentId))
+      .take(1);
+    if (existing[0]) {
+      return existing[0];
+    }
+  }
+  return null;
+}
+
 /**
  * Get all agents, optionally filtered by status
  */
@@ -262,15 +357,23 @@ export const get = query({
     if (statusId) {
       return await ctx.db.get(statusId);
     }
-    // Fallback: search agentStatus by agentId string
-    const statusByAgentId = await ctx.db
-      .query("agentStatus")
-      .filter((q) => q.eq(q.field("agentId"), normalizedInput))
-      .first();
-    if (statusByAgentId) {
-      return statusByAgentId;
-    }
-    return null;
+    const lookup = await resolveAgentLookup(ctx, normalizedInput);
+    const lookupIds = lookup?.lookupIds ?? [normalizedInput];
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("agentStatus")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .take(1)
+      )
+    );
+    const mapped = results.flat().map((status) => {
+      if (lookup?.convexId) {
+        return { ...status, agentId: lookup.convexId };
+      }
+      return status;
+    });
+    return selectLatestStatus(mapped)[0] ?? null;
   },
 });
 
@@ -290,21 +393,23 @@ export const getStatus = query({
     if (statusId) {
       return await ctx.db.get(statusId);
     }
-    // Resolve agent status via agents table if ID is for an agent
-    const agentDocId = ctx.db.normalizeId("agents", normalizedInput);
-    if (agentDocId) {
-      const agent = await ctx.db.get(agentDocId);
-      const bridgeAgentId = agent?.bridgeAgentId ?? normalizedInput;
-      return await ctx.db
-        .query("agentStatus")
-        .withIndex("by_agent", (q) => q.eq("agentId", bridgeAgentId))
-        .first();
-    }
-    // Fallback: search agentStatus by agentId string (e.g., "main")
-    return await ctx.db
-      .query("agentStatus")
-      .withIndex("by_agent", (q) => q.eq("agentId", normalizedInput))
-      .first();
+    const lookup = await resolveAgentLookup(ctx, normalizedInput);
+    const lookupIds = lookup?.lookupIds ?? [normalizedInput];
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("agentStatus")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .take(1)
+      )
+    );
+    const mapped = results.flat().map((status) => {
+      if (lookup?.convexId) {
+        return { ...status, agentId: lookup.convexId };
+      }
+      return status;
+    });
+    return selectLatestStatus(mapped)[0] ?? null;
   },
 });
 
@@ -386,26 +491,39 @@ export const presenceCounts = query({
     active: number;
   }> => {
     const statuses = await ctx.db.query("agentStatus").collect();
-    const latestByAgent = new Map<string, Doc<"agentStatus">>();
+    if (statuses.length === 0) {
+      return {
+        total: 0,
+        online: 0,
+        offline: 0,
+        busy: 0,
+        paused: 0,
+        active: 0,
+      };
+    }
 
-    for (const status of statuses) {
-      const timestamp = Math.max(status.lastActivity ?? 0, status.lastHeartbeat ?? 0);
-      const existing = latestByAgent.get(status.agentId);
-      if (!existing) {
-        latestByAgent.set(status.agentId, status);
-        continue;
-      }
-      const existingTimestamp = Math.max(
-        existing.lastActivity ?? 0,
-        existing.lastHeartbeat ?? 0
-      );
-      if (timestamp >= existingTimestamp) {
-        latestByAgent.set(status.agentId, status);
+    const agents = await ctx.db.query("agents").collect();
+    const bridgeToConvex = new Map<string, string>();
+    for (const agent of agents) {
+      if (agent.bridgeAgentId) {
+        bridgeToConvex.set(agent.bridgeAgentId, agent._id);
       }
     }
 
+    const mapped = bridgeToConvex.size
+      ? statuses.map((status) => {
+          const convexId = bridgeToConvex.get(status.agentId);
+          if (convexId) {
+            return { ...status, agentId: convexId };
+          }
+          return status;
+        })
+      : statuses;
+
+    const latest = selectLatestStatus(mapped);
+
     const counts = {
-      total: latestByAgent.size,
+      total: latest.length,
       online: 0,
       offline: 0,
       busy: 0,
@@ -413,7 +531,7 @@ export const presenceCounts = query({
       active: 0,
     };
 
-    for (const status of latestByAgent.values()) {
+    for (const status of latest) {
       switch (status.status) {
         case "online":
           counts.online += 1;
@@ -446,54 +564,30 @@ export const listStatus = query({
     agentIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentStatus">>> => {
-    const selectLatest = (statuses: Array<Doc<"agentStatus">>) => {
-      const latestByAgent = new Map<string, Doc<"agentStatus">>();
-      for (const status of statuses) {
-        const existing = latestByAgent.get(status.agentId);
-        if (!existing) {
-          latestByAgent.set(status.agentId, status);
-          continue;
-        }
-        const nextTimestamp = Math.max(
-          status.lastActivity ?? 0,
-          status.lastHeartbeat ?? 0
-        );
-        const existingTimestamp = Math.max(
-          existing.lastActivity ?? 0,
-          existing.lastHeartbeat ?? 0
-        );
-        if (nextTimestamp >= existingTimestamp) {
-          latestByAgent.set(status.agentId, status);
-        }
-      }
-      return Array.from(latestByAgent.values());
-    };
-
     const requestedAgentIds =
       args.agentIds
         ?.map((id) => normalizeAgentIdForLookup(id))
         .filter((id): id is string => Boolean(id)) ?? [];
 
     if (requestedAgentIds.length > 0) {
-      const agents = await Promise.all(
-        requestedAgentIds.map(async (id) => resolveAgentRecord(ctx, id))
-      );
-
       const lookupIds = new Set<string>();
       const lookupToConvex = new Map<string, string>();
 
-      for (let i = 0; i < agents.length; i++) {
-        const agent = agents[i];
-        const inputId = requestedAgentIds[i];
-        const normalizedConvexId = ctx.db.normalizeId("agents", inputId);
-        const convexId = agent?._id ?? normalizedConvexId ?? undefined;
-        const bridgeId = agent?.bridgeAgentId ?? inputId;
+      const lookups = await Promise.all(
+        requestedAgentIds.map(async (id) => resolveAgentLookup(ctx, id))
+      );
 
-        lookupIds.add(bridgeId);
-        if (convexId) {
-          lookupIds.add(convexId);
-          lookupToConvex.set(bridgeId, convexId);
-          lookupToConvex.set(convexId, convexId);
+      for (let i = 0; i < lookups.length; i++) {
+        const lookup = lookups[i];
+        const inputId = requestedAgentIds[i];
+        const ids = lookup?.lookupIds ?? [inputId];
+        for (const lookupId of ids) {
+          lookupIds.add(lookupId);
+        }
+        if (lookup?.convexId) {
+          for (const lookupId of ids) {
+            lookupToConvex.set(lookupId, lookup.convexId);
+          }
         }
       }
 
@@ -514,7 +608,7 @@ export const listStatus = query({
         return status;
       });
 
-      return selectLatest(mapped);
+      return selectLatestStatus(mapped);
     }
 
     const statuses = await ctx.db.query("agentStatus").collect();
@@ -531,7 +625,7 @@ export const listStatus = query({
     }
 
     if (bridgeToConvex.size === 0) {
-      return statuses;
+      return selectLatestStatus(statuses);
     }
 
     const mapped = statuses.map((status) => {
@@ -542,7 +636,7 @@ export const listStatus = query({
       return status;
     });
 
-    return selectLatest(mapped);
+    return selectLatestStatus(mapped);
   },
 });
 
@@ -560,46 +654,44 @@ export const listWorkingMemory = query({
         .filter((id): id is string => Boolean(id)) ?? [];
 
     if (requestedAgentIds.length > 0) {
-      const agents = await Promise.all(
-        requestedAgentIds.map(async (id) => {
-          try {
-            return await ctx.db.get(id as Id<"agents">);
-          } catch {
-            return null;
-          }
-        })
+      const lookupIds = new Set<string>();
+      const lookupToConvex = new Map<string, string>();
+      const lookups = await Promise.all(
+        requestedAgentIds.map(async (id) => resolveAgentLookup(ctx, id))
       );
 
-      const bridgeToConvex = new Map<string, string>();
-      const bridgeIds: string[] = [];
-
-      for (let i = 0; i < agents.length; i++) {
-        const agent = agents[i];
-        const convexId = requestedAgentIds[i];
-        if (agent?.bridgeAgentId) {
-          bridgeIds.push(agent.bridgeAgentId);
-          bridgeToConvex.set(agent.bridgeAgentId, convexId);
-        } else {
-          bridgeIds.push(convexId);
+      for (let i = 0; i < lookups.length; i++) {
+        const lookup = lookups[i];
+        const inputId = requestedAgentIds[i];
+        const ids = lookup?.lookupIds ?? [inputId];
+        for (const lookupId of ids) {
+          lookupIds.add(lookupId);
+        }
+        if (lookup?.convexId) {
+          for (const lookupId of ids) {
+            lookupToConvex.set(lookupId, lookup.convexId);
+          }
         }
       }
 
       const results = await Promise.all(
-        bridgeIds.map((bridgeId) =>
+        Array.from(lookupIds).map((lookupId) =>
           ctx.db
             .query("agentWorkingMemory")
-            .withIndex("by_agent", (q) => q.eq("agentId", bridgeId))
+            .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
             .take(1)
         )
       );
 
-      return results.flat().map((memory) => {
-        const convexId = bridgeToConvex.get(memory.agentId);
+      const mapped = results.flat().map((memory) => {
+        const convexId = lookupToConvex.get(memory.agentId);
         if (convexId) {
           return { ...memory, agentId: convexId };
         }
         return memory;
       });
+
+      return selectLatestWorkingMemory(mapped);
     }
 
     const memories = await ctx.db.query("agentWorkingMemory").order("desc").collect();
@@ -616,16 +708,18 @@ export const listWorkingMemory = query({
     }
 
     if (bridgeToConvex.size === 0) {
-      return memories;
+      return selectLatestWorkingMemory(memories);
     }
 
-    return memories.map((memory) => {
+    const mapped = memories.map((memory) => {
       const convexId = bridgeToConvex.get(memory.agentId);
       if (convexId) {
         return { ...memory, agentId: convexId };
       }
       return memory;
     });
+
+    return selectLatestWorkingMemory(mapped);
   },
 });
 
@@ -641,17 +735,18 @@ export const updateAgentStatus = mutation({
     clearSession: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<void> => {
-    const agentId = normalizeAgentIdForLookup(args.agentId);
-    if (!agentId) {
+    const normalized = normalizeAgentIdForLookup(args.agentId);
+    if (!normalized) {
       throw new Error("Invalid agentId");
     }
-    const existing = await ctx.db
-      .query("agentStatus")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_agent", (q: any) => q.eq("agentId", agentId))
-      .take(1);
-
-    const current = existing[0] ?? null;
+    const agentRecord = await resolveOrCreateAgentRecord(ctx, normalized);
+    const canonicalAgentId = agentRecord?._id ?? normalized;
+    const lookupIds = uniqueInOrder([
+      canonicalAgentId,
+      agentRecord?.bridgeAgentId,
+      normalized,
+    ]);
+    const current = await findStatusRecord(ctx, lookupIds);
     const shouldClearSession = args.status === "offline" || args.clearSession === true;
     const currentSession = shouldClearSession
       ? undefined
@@ -661,7 +756,7 @@ export const updateAgentStatus = mutation({
     await upsertStatus(
       ctx,
       {
-        agentId,
+        agentId: canonicalAgentId,
         status: args.status,
         lastHeartbeat: args.lastSeen,
         lastActivity: args.lastSeen,
@@ -685,10 +780,17 @@ export const upsertWorkingMemory = mutation({
     nextSteps: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const agentId = normalizeAgentIdForLookup(args.agentId);
-    if (!agentId) {
+    const normalized = normalizeAgentIdForLookup(args.agentId);
+    if (!normalized) {
       throw new Error("Invalid agentId");
     }
+    const agentRecord = await resolveOrCreateAgentRecord(ctx, normalized);
+    const canonicalAgentId = agentRecord?._id ?? normalized;
+    const lookupIds = uniqueInOrder([
+      canonicalAgentId,
+      agentRecord?.bridgeAgentId,
+      normalized,
+    ]);
     const now = Date.now();
     const workingMemory = {
       currentTask: args.currentTask,
@@ -698,31 +800,28 @@ export const upsertWorkingMemory = mutation({
       ...(args.progress !== undefined ? { progress: args.progress } : {}),
     };
 
-    const existing = await ctx.db
-      .query("agentWorkingMemory")
-      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
-      .take(1);
-
-    const current = existing[0];
+    const current = await findWorkingMemoryRecord(ctx, lookupIds);
     let recordId: Id<"agentWorkingMemory">;
     if (current) {
-      await ctx.db.patch(current._id, workingMemory);
+      await ctx.db.patch(current._id, {
+        agentId: canonicalAgentId,
+        ...workingMemory,
+      });
       recordId = current._id;
     } else {
       recordId = await ctx.db.insert("agentWorkingMemory", {
-        agentId,
+        agentId: canonicalAgentId,
         ...workingMemory,
         createdAt: now,
       });
     }
 
-    const statusRecord = await ctx.db
-      .query("agentStatus")
-      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
-      .take(1);
-
-    if (statusRecord[0]) {
-      await ctx.db.patch(statusRecord[0]._id, { workingMemory });
+    const statusRecord = await findStatusRecord(ctx, lookupIds);
+    if (statusRecord) {
+      await ctx.db.patch(statusRecord._id, {
+        agentId: canonicalAgentId,
+        workingMemory,
+      });
     }
 
     return await ctx.db.get(recordId);
@@ -1193,24 +1292,36 @@ export const updateStatusFromEvent = internalMutation({
       const parsed = presencePayloadSchema.safeParse(event.payload);
       if (parsed.success && parsed.data.entries && parsed.data.entries.length > 0) {
         await Promise.all(
-          parsed.data.entries.map((entry) => {
+          parsed.data.entries.map(async (entry) => {
             const entryAgentId = normalizeAgentIdForLookup(entry.deviceId);
             if (!entryAgentId) {
               return null;
             }
+            const agentRecord = await resolveOrCreateAgentRecord(ctx, entryAgentId);
+            const canonicalAgentId = agentRecord?._id ?? entryAgentId;
+            const lookupIds = uniqueInOrder([
+              canonicalAgentId,
+              agentRecord?.bridgeAgentId,
+              entryAgentId,
+            ]);
+            const current = await findStatusRecord(ctx, lookupIds);
             return upsertStatus(
               ctx,
               {
-                agentId: entryAgentId,
+                agentId: canonicalAgentId,
                 status: "online",
                 lastHeartbeat: normalizeTimestamp(entry.lastSeen, eventTime),
                 lastActivity: normalizeTimestamp(entry.lastSeen, eventTime),
                 currentSession: event.sessionKey,
                 sessionInfo: entry,
               },
-              { preservePaused: true, preserveBusy: true }
+              {
+                existing: current,
+                preservePaused: true,
+                preserveBusy: true,
+              }
             );
-          }).filter(Boolean)
+          })
         );
         return;
       }
@@ -1220,16 +1331,28 @@ export const updateStatusFromEvent = internalMutation({
       if (!normalizedEventAgentId) {
         return;
       }
+      const agentRecord = await resolveOrCreateAgentRecord(ctx, normalizedEventAgentId);
+      const canonicalAgentId = agentRecord?._id ?? normalizedEventAgentId;
+      const lookupIds = uniqueInOrder([
+        canonicalAgentId,
+        agentRecord?.bridgeAgentId,
+        normalizedEventAgentId,
+      ]);
+      const current = await findStatusRecord(ctx, lookupIds);
       await upsertStatus(
         ctx,
         {
-          agentId: normalizedEventAgentId,
+          agentId: canonicalAgentId,
           status: "online",
           lastHeartbeat: eventTime,
           lastActivity: eventTime,
           currentSession: event.sessionKey,
         },
-        { preservePaused: true, preserveBusy: true }
+        {
+          existing: current,
+          preservePaused: true,
+          preserveBusy: true,
+        }
       );
     }
   },

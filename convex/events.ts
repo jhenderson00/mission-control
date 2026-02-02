@@ -1,8 +1,14 @@
 import { v } from "convex/values";
 import { z } from "zod";
 import { httpAction, internalMutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { normalizeAgentIdForLookup, resolveBridgeAgentId } from "./agentLinking";
+import {
+  normalizeAgentIdForLookup,
+  resolveAgentLookup,
+  resolveOrCreateAgentRecord,
+} from "./agentLinking";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -355,6 +361,24 @@ function normalizeEvent(event: {
   };
 }
 
+async function buildDisplayAgentMap(
+  ctx: QueryCtx,
+  agentIds: string[]
+): Promise<Map<string, string>> {
+  const uniqueIds = Array.from(new Set(agentIds));
+  const lookups = await Promise.all(
+    uniqueIds.map(async (agentId) => resolveAgentLookup(ctx, agentId))
+  );
+  const display = new Map<string, string>();
+  for (let i = 0; i < uniqueIds.length; i++) {
+    const lookup = lookups[i];
+    if (lookup?.bridgeId) {
+      display.set(uniqueIds[i], lookup.bridgeId);
+    }
+  }
+  return display;
+}
+
 /**
  * HTTP ingest endpoint for Gateway events (Bridge -> Convex)
  */
@@ -417,8 +441,15 @@ export const store = internalMutation({
       return existing[0]._id;
     }
 
+    const normalizedAgentId = normalizeAgentIdForLookup(args.agentId);
+    const agentRecord = normalizedAgentId
+      ? await resolveOrCreateAgentRecord(ctx, normalizedAgentId)
+      : null;
+    const canonicalAgentId = agentRecord?._id ?? normalizedAgentId ?? args.agentId;
+
     return await ctx.db.insert("events", {
       ...args,
+      agentId: canonicalAgentId,
       receivedAt: Date.now(),
     });
   },
@@ -437,22 +468,38 @@ export const listByAgent = query({
     if (!normalizedInput) {
       return [];
     }
-    const bridgeAgentId = await resolveBridgeAgentId(ctx, normalizedInput);
-    if (!bridgeAgentId) {
-      return [];
+    const lookup = await resolveAgentLookup(ctx, normalizedInput);
+    const lookupIds = lookup?.lookupIds ?? [normalizedInput];
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("events")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .order("desc")
+          .take(args.limit ?? 100)
+      )
+    );
+    const merged = new Map<string, Doc<"events">>();
+    for (const event of results.flat()) {
+      merged.set(event._id, event);
     }
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_agent", (q) => q.eq("agentId", bridgeAgentId))
-      .order("desc")
-      .take(args.limit ?? 100);
+    const sorted = Array.from(merged.values()).sort(
+      (a, b) =>
+        normalizeTimestamp(b.timestamp, b.receivedAt) -
+        normalizeTimestamp(a.timestamp, a.receivedAt)
+    );
+    const limited = sorted.slice(0, args.limit ?? 100);
+    const displayMap = await buildDisplayAgentMap(
+      ctx,
+      limited.map((event) => event.agentId)
+    );
 
-    return events.map((event) =>
+    return limited.map((event) =>
       normalizeEvent({
         _id: event._id,
         receivedAt: event.receivedAt,
         timestamp: event.timestamp,
-        agentId: event.agentId,
+        agentId: displayMap.get(event.agentId) ?? event.agentId,
         eventType: event.eventType,
         payload: event.payload,
       })
@@ -476,13 +523,17 @@ export const listRecent = query({
         .withIndex("by_type", (q) => q.eq("eventType", eventType))
         .order("desc")
         .take(args.limit ?? 50);
+      const displayMap = await buildDisplayAgentMap(
+        ctx,
+        events.map((event) => event.agentId)
+      );
 
       return events.map((event) =>
         normalizeEvent({
           _id: event._id,
           receivedAt: event.receivedAt,
           timestamp: event.timestamp,
-          agentId: event.agentId,
+          agentId: displayMap.get(event.agentId) ?? event.agentId,
           eventType: event.eventType,
           payload: event.payload,
         })
@@ -493,13 +544,17 @@ export const listRecent = query({
       .query("events")
       .order("desc")
       .take(args.limit ?? 50);
+    const displayMap = await buildDisplayAgentMap(
+      ctx,
+      events.map((event) => event.agentId)
+    );
 
     return events.map((event) =>
       normalizeEvent({
         _id: event._id,
         receivedAt: event.receivedAt,
         timestamp: event.timestamp,
-        agentId: event.agentId,
+        agentId: displayMap.get(event.agentId) ?? event.agentId,
         eventType: event.eventType,
         payload: event.payload,
       })
