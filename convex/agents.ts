@@ -446,57 +446,75 @@ export const listStatus = query({
     agentIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentStatus">>> => {
+    const selectLatest = (statuses: Array<Doc<"agentStatus">>) => {
+      const latestByAgent = new Map<string, Doc<"agentStatus">>();
+      for (const status of statuses) {
+        const existing = latestByAgent.get(status.agentId);
+        if (!existing) {
+          latestByAgent.set(status.agentId, status);
+          continue;
+        }
+        const nextTimestamp = Math.max(
+          status.lastActivity ?? 0,
+          status.lastHeartbeat ?? 0
+        );
+        const existingTimestamp = Math.max(
+          existing.lastActivity ?? 0,
+          existing.lastHeartbeat ?? 0
+        );
+        if (nextTimestamp >= existingTimestamp) {
+          latestByAgent.set(status.agentId, status);
+        }
+      }
+      return Array.from(latestByAgent.values());
+    };
+
     const requestedAgentIds =
       args.agentIds
         ?.map((id) => normalizeAgentIdForLookup(id))
         .filter((id): id is string => Boolean(id)) ?? [];
 
     if (requestedAgentIds.length > 0) {
-      // Look up agents to get their bridgeAgentId mappings
       const agents = await Promise.all(
-        requestedAgentIds.map(async (id) => {
-          try {
-            return await ctx.db.get(id as Id<"agents">);
-          } catch {
-            return null;
-          }
-        })
+        requestedAgentIds.map(async (id) => resolveAgentRecord(ctx, id))
       );
 
-      // Build map of bridgeAgentId -> convexAgentId for response mapping
-      const bridgeToConvex = new Map<string, string>();
-      const bridgeIds: string[] = [];
-      
+      const lookupIds = new Set<string>();
+      const lookupToConvex = new Map<string, string>();
+
       for (let i = 0; i < agents.length; i++) {
         const agent = agents[i];
-        const convexId = requestedAgentIds[i];
-        if (agent?.bridgeAgentId) {
-          bridgeIds.push(agent.bridgeAgentId);
-          bridgeToConvex.set(agent.bridgeAgentId, convexId);
-        } else {
-          // Fallback: try using convexId directly as bridgeAgentId
-          bridgeIds.push(convexId);
+        const inputId = requestedAgentIds[i];
+        const normalizedConvexId = ctx.db.normalizeId("agents", inputId);
+        const convexId = agent?._id ?? normalizedConvexId ?? undefined;
+        const bridgeId = agent?.bridgeAgentId ?? inputId;
+
+        lookupIds.add(bridgeId);
+        if (convexId) {
+          lookupIds.add(convexId);
+          lookupToConvex.set(bridgeId, convexId);
+          lookupToConvex.set(convexId, convexId);
         }
       }
 
-      // Query status by bridgeAgentIds
       const results = await Promise.all(
-        bridgeIds.map((bridgeId) =>
+        Array.from(lookupIds).map((lookupId) =>
           ctx.db
             .query("agentStatus")
-            .withIndex("by_agent", (q) => q.eq("agentId", bridgeId))
+            .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
             .take(1)
         )
       );
 
-      // Map results back to convex agent IDs for UI consistency
-      return results.flat().map((status) => {
-        const convexId = bridgeToConvex.get(status.agentId);
+      const mapped = results.flat().map((status) => {
+        const convexId = lookupToConvex.get(status.agentId);
         if (convexId) {
           return { ...status, agentId: convexId };
         }
         return status;
       });
+
+      return selectLatest(mapped);
     }
 
     const statuses = await ctx.db.query("agentStatus").collect();
@@ -516,13 +534,15 @@ export const listStatus = query({
       return statuses;
     }
 
-    return statuses.map((status) => {
+    const mapped = statuses.map((status) => {
       const convexId = bridgeToConvex.get(status.agentId);
       if (convexId) {
         return { ...status, agentId: convexId };
       }
       return status;
     });
+
+    return selectLatest(mapped);
   },
 });
 
