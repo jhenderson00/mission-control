@@ -48,14 +48,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeCommand(command: string): ControlCommand | null {
-  switch (command) {
+  const normalized = command.trim().toLowerCase();
+  switch (normalized) {
     case "pause":
     case "resume":
     case "redirect":
     case "kill":
     case "restart":
     case "priority":
-      return command;
+      return normalized;
     case "agent.pause":
       return "pause";
     case "agent.resume":
@@ -66,6 +67,7 @@ function normalizeCommand(command: string): ControlCommand | null {
       return "kill";
     case "agent.restart":
       return "restart";
+    case "priority.override":
     case "agent.priority.override":
     case "agent.priority":
       return "priority";
@@ -89,7 +91,8 @@ function parseControlPayload(payload: unknown): ParsedControlPayload {
     throw new ControlValidationError("Invalid control payload");
   }
 
-  const rawCommand = resolveString(payload.command) ?? resolveString(payload.method);
+  const rawCommand =
+    resolveTrimmedString(payload.command) ?? resolveTrimmedString(payload.method);
   const rawParams = payload.params;
   if (rawParams !== undefined && !isRecord(rawParams)) {
     throw new ControlValidationError("Invalid params");
@@ -104,7 +107,7 @@ function parseControlPayload(payload: unknown): ParsedControlPayload {
   }
 
   if (rawCommand === "agents.bulk") {
-    const nestedCommandRaw = resolveString(params.command);
+    const nestedCommandRaw = resolveTrimmedString(params.command);
     const nestedCommand = nestedCommandRaw
       ? normalizeCommand(nestedCommandRaw)
       : null;
