@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 vi.mock("next/font/google", () => ({
   Geist: () => ({ variable: "--font-geist-sans" }),
@@ -16,11 +16,14 @@ describe("RootLayout", () => {
   });
 
   it("renders html and body structure", () => {
-    const element = RootLayout({ children: <div>Child</div> }) as ReactElement;
+    const element = RootLayout({ children: <div>Child</div> }) as ReactElement<{
+      lang?: string;
+      children?: ReactNode;
+    }>;
     expect(element.type).toBe("html");
     expect(element.props.lang).toBe("en");
 
-    const body = element.props.children as ReactElement;
+    const body = element.props.children as ReactElement<{ children?: ReactNode }>;
     expect(body.type).toBe("body");
   });
 });

@@ -48,17 +48,28 @@ function resetConnectionStore() {
   });
 }
 
-const connectedState = {
+const baseConnectionState: ConnectionState = {
+  hasInflightRequests: false,
+  isWebSocketConnected: false,
+  timeOfOldestInflightRequest: null,
+  hasEverConnected: false,
+  connectionCount: 1,
+  connectionRetries: 0,
+  inflightMutations: 0,
+  inflightActions: 0,
+};
+
+const connectedState: ConnectionState = {
+  ...baseConnectionState,
   isWebSocketConnected: true,
   hasEverConnected: true,
-  isWebSocketAuthenticated: true,
-} as ConnectionState;
+};
 
-const disconnectedState = {
+const disconnectedState: ConnectionState = {
+  ...baseConnectionState,
   isWebSocketConnected: false,
   hasEverConnected: true,
-  isWebSocketAuthenticated: false,
-} as ConnectionState;
+};
 
 describe("state-sync", () => {
   beforeEach(() => {
