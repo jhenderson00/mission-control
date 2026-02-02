@@ -58,7 +58,8 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_type", ["type"])
-    .index("by_host", ["host"]),
+    .index("by_host", ["host"])
+    .index("by_bridge_agent_id", ["bridgeAgentId"]),
 
   /**
    * Task - Work items assigned to agents

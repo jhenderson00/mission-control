@@ -1,4 +1,4 @@
-import type { AgentStatusUpdate, BridgeEvent } from "./types";
+import type { AgentMetadataUpdate, AgentStatusUpdate, BridgeEvent } from "./types";
 
 type ConvexClientOptions = {
   baseUrl: string;
@@ -26,6 +26,7 @@ export type PendingNotification = {
 export class ConvexClient {
   private readonly ingestUrl: string;
   private readonly statusUrl: string;
+  private readonly agentMetadataUrl: string;
   private readonly notificationsPendingUrl: string;
   private readonly notificationsDeliveredUrl: string;
   private readonly notificationsAttemptUrl: string;
@@ -38,6 +39,7 @@ export class ConvexClient {
       .replace(".convex.cloud", ".convex.site");
     this.ingestUrl = `${base}/events/ingest`;
     this.statusUrl = `${base}/agents/update-status`;
+    this.agentMetadataUrl = `${base}/agents/sync`;
     this.notificationsPendingUrl = `${base}/notifications/pending`;
     this.notificationsDeliveredUrl = `${base}/notifications/mark-delivered`;
     this.notificationsAttemptUrl = `${base}/notifications/attempt`;
@@ -83,6 +85,28 @@ export class ConvexClient {
       const text = await response.text();
       throw new Error(
         `Convex status update failed (${response.status}): ${text || response.statusText}`
+      );
+    }
+  }
+
+  async syncAgentMetadata(updates: AgentMetadataUpdate[]): Promise<void> {
+    if (updates.length === 0) {
+      return;
+    }
+
+    const response = await fetch(this.agentMetadataUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${this.options.secret}`,
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Convex agent sync failed (${response.status}): ${text || response.statusText}`
       );
     }
   }

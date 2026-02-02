@@ -32,6 +32,38 @@ describe("events functions", () => {
     expect(byAgent[0].content).toContain("Hello");
   });
 
+  it("maps convex agent ids to bridge agent ids when listing by agent", async () => {
+    const ctx = createMockCtx();
+    const agentRecordId = await ctx.db.insert("agents", {
+      name: "Bridge",
+      status: "idle",
+      type: "executor",
+      model: "m1",
+      host: "local",
+      bridgeAgentId: "agent_bridge",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    await ctx.db.insert("events", {
+      eventId: "evt_bridge",
+      eventType: "agent",
+      agentId: "agent_bridge",
+      sessionKey: "session_bridge",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { delta: { content: "Mapped" } },
+      receivedAt: Date.now(),
+    });
+
+    const byAgent = await asHandler(events.listByAgent)._handler(ctx, {
+      agentId: agentRecordId as never,
+    });
+
+    expect(byAgent).toHaveLength(1);
+    expect(byAgent[0].content).toContain("Mapped");
+  });
+
   it("lists recent events with optional type filter", async () => {
     const ctx = createMockCtx();
     await ctx.db.insert("events", {

@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { ingest } from "./events";
 import {
   listWorkingMemoryHttp,
+  syncAgentMetadataHttp,
   updateAgentStatusHttp,
   upsertWorkingMemoryHttp,
 } from "./agents";
@@ -23,6 +24,12 @@ http.route({
   path: "/agents/update-status",
   method: "POST",
   handler: updateAgentStatusHttp,
+});
+
+http.route({
+  path: "/agents/sync",
+  method: "POST",
+  handler: syncAgentMetadataHttp,
 });
 
 http.route({

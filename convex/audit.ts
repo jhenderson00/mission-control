@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, query } from "./_generated/server";
+import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agent-linking";
 
 const outcomeValidator = v.union(
   v.literal("accepted"),
@@ -49,9 +50,15 @@ export const listByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"auditLog">>> => {
+    const normalized = normalizeAgentIdForLookup(args.agentId);
+    if (!normalized) {
+      return [];
+    }
+    const resolved = await resolveConvexAgentId(ctx, normalized);
+    const agentId = resolved ?? normalized;
     return await ctx.db
       .query("auditLog")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
       .order("desc")
       .take(args.limit ?? 50);
   },

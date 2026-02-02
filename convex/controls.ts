@@ -15,7 +15,8 @@ import { z } from "zod";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalMutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agent-linking";
 
 type OperationStatus = "queued" | "sent" | "acked" | "failed" | "timed-out";
 
@@ -58,14 +59,14 @@ const bulkCommandSchema = z.enum([
 ]);
 
 const dispatchSchema = z.object({
-  agentId: z.string().min(1),
+  agentId: z.string().trim().min(1),
   command: commandSchema,
   params: z.unknown().optional(),
   requestId: z.string().min(1).optional(),
 });
 
 const bulkDispatchSchema = z.object({
-  agentIds: z.array(z.string().min(1)).min(1),
+  agentIds: z.array(z.string().trim().min(1)).min(1),
   command: bulkCommandSchema,
   params: z.unknown().optional(),
   requestId: z.string().min(1).optional(),
@@ -123,6 +124,18 @@ const bridgeAckSchema = z
     error: z.string().optional(),
   })
   .passthrough();
+
+async function resolveAgentIdForQuery(
+  ctx: QueryCtx,
+  agentId: string
+): Promise<string | null> {
+  const normalized = normalizeAgentIdForLookup(agentId);
+  if (!normalized) {
+    return null;
+  }
+  const resolved = await resolveConvexAgentId(ctx, normalized);
+  return resolved ?? normalized;
+}
 
 function parseCommandParams(
   command: ControlCommand,
@@ -395,10 +408,15 @@ export const dispatch = action({
       status: "sent",
     });
 
+    const resolvedBridgeAgentId =
+      (await ctx.runQuery(api.agents.resolveBridgeAgentId, {
+        id: parsed.data.agentId,
+      })) ?? parsed.data.agentId;
+
     let bridgeAck: BridgeAck | null = null;
     try {
       bridgeAck = await dispatchToBridge({
-        agentId: parsed.data.agentId,
+        agentId: resolvedBridgeAgentId,
         command,
         requestId,
         params,
@@ -603,10 +621,19 @@ export const bulkDispatch = action({
       });
     }
 
+    const resolvedBridgeAgentIds = await Promise.all(
+      parsed.data.agentIds.map(async (agentId) => {
+        const resolved = await ctx.runQuery(api.agents.resolveBridgeAgentId, {
+          id: agentId,
+        });
+        return resolved ?? agentId;
+      })
+    );
+
     let bridgeAck: BridgeAck | null = null;
     try {
       bridgeAck = await dispatchToBridge({
-        agentIds: parsed.data.agentIds,
+        agentIds: resolvedBridgeAgentIds,
         command,
         requestId,
         params,
@@ -754,9 +781,13 @@ const listActiveByAgentHandler = async (
   ctx: QueryCtx,
   args: { agentId: string; limit?: number }
 ): Promise<Array<Doc<"agentControlOperations">>> => {
+  const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
+  if (!resolvedAgentId) {
+    return [];
+  }
   return await ctx.db
     .query("agentControlOperations")
-    .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+    .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
     .filter((q) =>
       q.or(
         q.eq(q.field("status"), activeStatuses[0]),
@@ -784,9 +815,13 @@ export const operationsByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
+    if (!resolvedAgentId) {
+      return [];
+    }
     return await ctx.db
       .query("agentControlOperations")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
       .order("desc")
       .take(args.limit ?? 50);
   },
@@ -832,9 +867,13 @@ export const listAuditsByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
+    const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
+    if (!resolvedAgentId) {
+      return [];
+    }
     return await ctx.db
       .query("agentControlAudits")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
       .order("desc")
       .take(args.limit ?? 50);
   },
@@ -846,9 +885,13 @@ export const auditByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
+    const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
+    if (!resolvedAgentId) {
+      return [];
+    }
     return await ctx.db
       .query("agentControlAudits")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
       .order("desc")
       .take(args.limit ?? 50);
   },

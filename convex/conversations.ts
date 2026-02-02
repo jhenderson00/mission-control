@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { z } from "zod";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, query } from "./_generated/server";
+import { normalizeAgentIdForLookup } from "./agent-linking";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -40,7 +41,7 @@ const agentPayloadSchema = z
 const chatMessageSchema = z
   .object({
     sessionKey: z.string().optional(),
-    agentId: z.string().optional(),
+    agentId: z.string().trim().min(1).optional(),
     role: z.enum(["user", "assistant", "system"]).optional(),
     content: z.string(),
     timestamp: z.union([z.string(), z.number()]).optional(),
@@ -128,6 +129,11 @@ export const processAgentEvent = internalMutation({
       return null;
     }
 
+    const agentId = normalizeAgentIdForLookup(event.agentId);
+    if (!agentId) {
+      return null;
+    }
+
     let content: string | null = null;
     if (delta.type === "text") {
       content = delta.content ?? null;
@@ -149,7 +155,7 @@ export const processAgentEvent = internalMutation({
 
     return await upsertMessage(ctx, {
       sessionKey,
-      agentId: event.agentId,
+      agentId,
       role: "assistant",
       content,
       isStreaming,
@@ -183,7 +189,7 @@ export const processChatEvent = internalMutation({
 
     for (const [index, message] of messages.entries()) {
       const sessionKey = message.sessionKey ?? event.sessionKey;
-      const agentId = message.agentId ?? event.agentId;
+      const agentId = normalizeAgentIdForLookup(message.agentId ?? event.agentId);
       if (!sessionKey || !agentId) {
         continue;
       }

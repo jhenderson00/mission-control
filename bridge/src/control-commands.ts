@@ -35,6 +35,14 @@ function resolveString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function resolveTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -70,7 +78,9 @@ function normalizeAgentIds(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length === 0) {
     return null;
   }
-  const agentIds = value.filter((id) => typeof id === "string" && id.length > 0);
+  const agentIds = value
+    .map((id) => resolveTrimmedString(id))
+    .filter((id): id is string => Boolean(id));
   return agentIds.length === value.length ? agentIds : null;
 }
 
@@ -135,7 +145,7 @@ function parseControlPayload(payload: unknown): ParsedControlPayload {
   }
 
   const agentId =
-    resolveString(payload.agentId) ?? resolveString(params.agentId);
+    resolveTrimmedString(payload.agentId) ?? resolveTrimmedString(params.agentId);
 
   if (!agentId) {
     throw new ControlValidationError("Missing agentId");

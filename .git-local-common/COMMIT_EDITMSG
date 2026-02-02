@@ -1,0 +1,11 @@
+fix: only show HeartbeatIndicator for offline/paused states
+
+The agent status (idle/active/blocked/failed) and heartbeat status
+(online/offline/busy/paused) were both displayed, causing confusion
+when showing 'idle' and 'BUSY' simultaneously.
+
+Now HeartbeatIndicator only appears when it indicates a problem:
+- offline: agent not reachable
+- paused: agent explicitly paused
+
+This removes visual clutter when agents are operating normally.

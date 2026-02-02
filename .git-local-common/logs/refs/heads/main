@@ -1,0 +1,63 @@
+0000000000000000000000000000000000000000 251857f123d06f56c33e66c01ba097bde26d7ffa Cydni <cydniai@icloud.com> 1769825740 -0600	commit (initial): chore: initial scaffold with Next.js 16, Convex, Tailwind 4
+251857f123d06f56c33e66c01ba097bde26d7ffa 89d8b8842fabcae15e7fd4e2cd44f5708d768e10 Cydni <cydniai@icloud.com> 1769826851 -0600	commit: Phase 1 Foundation: Convex schema, dashboard layout, agent status grid
+89d8b8842fabcae15e7fd4e2cd44f5708d768e10 a2e70c8576928e49fce570c062ea4fdc98db866b Cydni <cydniai@icloud.com> 1769827289 -0600	commit: feat: build phase 1 dashboard views
+a2e70c8576928e49fce570c062ea4fdc98db866b dc63b79e2f0db4abad6f69b6798bf285bfa58bfd Cydni <cydniai@icloud.com> 1769829484 -0600	commit: WIP: test infrastructure and test files (interrupted to add skills)
+dc63b79e2f0db4abad6f69b6798bf285bfa58bfd 1f00026220b0ffb6dbf6b952cb9675c2b415b059 Cydni <cydniai@icloud.com> 1769829971 -0600	commit: Fix agent detail page params typing
+1f00026220b0ffb6dbf6b952cb9675c2b415b059 c32f1be5cf001f27b3a43ce734654f98f4d1745d Cydni <cydniai@icloud.com> 1769830915 -0600	commit: chore: add Codex skills and AGENTS.md for best practices guidance
+c32f1be5cf001f27b3a43ce734654f98f4d1745d a696dd91d5ea438a601f6c7a1e0aabb7b8643ab9 Cydni <cydniai@icloud.com> 1769832416 -0600	commit: Polish pass: Clerk setup, Convex cleanup, UI refinements
+a696dd91d5ea438a601f6c7a1e0aabb7b8643ab9 94b74bdea4021d2e0061c9a6e0156df3332ddf80 Cydni <cydniai@icloud.com> 1769836657 -0600	commit: fix: resolve React peer dependency conflict for Clerk compatibility
+94b74bdea4021d2e0061c9a6e0156df3332ddf80 3b9f419487af8f5ef9e9a8b774f853baf6c10f98 Cydni <cydniai@icloud.com> 1769836848 -0600	commit: fix: add npm overrides and regenerate lockfile for Vercel compatibility
+3b9f419487af8f5ef9e9a8b774f853baf6c10f98 7ca492a28249dbc17fa96682725c34471d18eb46 Cydni <cydniai@icloud.com> 1769838330 -0600	commit: Rebrand UI to Cydni Mission Control
+7ca492a28249dbc17fa96682725c34471d18eb46 0861a0e14196342671367a9810968f2a5acf0415 Cydni <cydniai@icloud.com> 1769838807 -0600	commit: Update header branding to Cydni - Mission Control
+0861a0e14196342671367a9810968f2a5acf0415 342efbe3f9b0037650c635bfde8654f7e62585f0 Cydni <cydniai@icloud.com> 1769840207 -0600	commit: Add Clerk middleware for dashboard protection
+342efbe3f9b0037650c635bfde8654f7e62585f0 c5aba0a4e1f4f849fca7a4079ac0f453dffd0248 Cydni <cydniai@icloud.com> 1769840231 -0600	commit: Wire dashboard pages to Convex data
+c5aba0a4e1f4f849fca7a4079ac0f453dffd0248 f7a0fb7ad04b8aa9383422e6976bd4432b181aca Cydni <cydniai@icloud.com> 1769841266 -0600	commit: Stabilize Convex queries and tests
+f7a0fb7ad04b8aa9383422e6976bd4432b181aca de6e2922e84eaf3f58f8b9893ca9f9ab9e6b1884 Cydni <cydniai@icloud.com> 1769876340 -0600	commit: fix: add convex codegen to build for Vercel
+de6e2922e84eaf3f58f8b9893ca9f9ab9e6b1884 7175b7d68b92a524a903234d4dcbda1a3b33c3ba Cydni <cydniai@icloud.com> 1769876400 -0600	commit: fix: commit convex generated files for Vercel builds
+7175b7d68b92a524a903234d4dcbda1a3b33c3ba 3b2adbaab4621d7707ec645ff3cac7e404f849bc Cydni <cydniai@icloud.com> 1769881080 -0600	commit: chore: trigger redeploy with production Clerk keys
+3b2adbaab4621d7707ec645ff3cac7e404f849bc 1efc3f9865743344dd1315a73b87576754fb1706 Cydni <cydniai@icloud.com> 1769883933 -0600	commit: chore: force redeploy
+1efc3f9865743344dd1315a73b87576754fb1706 deba4fe2a4fc61c09367b7ff5bca40dcdfeb2548 Cydni <cydniai@icloud.com> 1769884018 -0600	commit: chore: redeploy without Convex
+deba4fe2a4fc61c09367b7ff5bca40dcdfeb2548 24c07c4c7db44fcc4c0ff2a0704d2e3ee5f2ad04 Cydni <cydniai@icloud.com> 1769884960 -0600	commit: chore: redeploy with Convex
+24c07c4c7db44fcc4c0ff2a0704d2e3ee5f2ad04 b809bdcf9012febf5f3631ac27458b62a2d3760f Cydni <cydniai@icloud.com> 1769902304 -0600	pull origin main: Fast-forward
+b809bdcf9012febf5f3631ac27458b62a2d3760f bcfaec6445b1c04dc14b5a152c467d7b5acd1e03 Cydni <cydniai@icloud.com> 1769902305 -0600	cherry-pick: fix: gracefully handle missing controls API in ControlPanel
+bcfaec6445b1c04dc14b5a152c467d7b5acd1e03 7e639b9690ea0d74437dca8762cb38db5175fa10 Cydni <cydniai@icloud.com> 1769910416 -0600	pull origin main: Fast-forward
+7e639b9690ea0d74437dca8762cb38db5175fa10 a5cceb275368769920cbbb9d2a40b83988a3699e Cydni <cydniai@icloud.com> 1769914632 -0600	pull origin main: Fast-forward
+a5cceb275368769920cbbb9d2a40b83988a3699e fdd637ac71f759aab13ccb2867a297e5f446d97d Cydni <cydniai@icloud.com> 1769916956 -0600	commit: Fix sidebar counts from Convex
+fdd637ac71f759aab13ccb2867a297e5f446d97d be80cac13d00a0cd746347fd395195a8abf64885 Cydni <cydniai@icloud.com> 1769922372 -0600	pull origin main: Fast-forward
+be80cac13d00a0cd746347fd395195a8abf64885 5b5750e8a0ab74739c42b90d2e0375dce8d1a1d2 Cydni <cydniai@icloud.com> 1769925216 -0600	commit: fix: filter undefined values from agentIds in useAgentStatus
+5b5750e8a0ab74739c42b90d2e0375dce8d1a1d2 73e4d13e346327f3bbc975ca8d51f10d5a948ff1 Cydni <cydniai@icloud.com> 1769926599 -0600	merge fix/agents-get-validation: Merge made by the 'ort' strategy.
+73e4d13e346327f3bbc975ca8d51f10d5a948ff1 6630dd31b25774ec008ddf641a625a2f7cec6fb8 Cydni <cydniai@icloud.com> 1769926809 -0600	pull origin main: Fast-forward
+6630dd31b25774ec008ddf641a625a2f7cec6fb8 2d6a6fe3468a68625af05479cb0cb7813a07a64a Cydni <cydniai@icloud.com> 1769927113 -0600	pull origin main: Fast-forward
+2d6a6fe3468a68625af05479cb0cb7813a07a64a 79c3764bb444faca58044b6c86a7f772273eb58c Cydni <cydniai@icloud.com> 1769929217 -0600	pull origin main: Fast-forward
+79c3764bb444faca58044b6c86a7f772273eb58c f616628be6b704584d8083ec98688e14d27db8c8 Cydni <cydniai@icloud.com> 1769929924 -0600	pull origin main: Fast-forward
+f616628be6b704584d8083ec98688e14d27db8c8 495d357f8d393a832e2430f37df35f0507a50a7c Cydni <cydniai@icloud.com> 1769930061 -0600	pull origin main: Fast-forward
+495d357f8d393a832e2430f37df35f0507a50a7c 18f269e2d13295bbf94e24d0aad4c8421f58d34e Cydni <cydniai@icloud.com> 1769930931 -0600	pull origin main: Fast-forward
+18f269e2d13295bbf94e24d0aad4c8421f58d34e 809781b07a30e1894927cfc8b19f8125fcfaca40 Cydni <cydniai@icloud.com> 1769933088 -0600	pull origin main: Fast-forward
+809781b07a30e1894927cfc8b19f8125fcfaca40 d718ef4ffbb6ff73d360db0527bf6b428322492d Cydni <cydniai@icloud.com> 1769934211 -0600	pull origin main: Fast-forward
+d718ef4ffbb6ff73d360db0527bf6b428322492d 4a07849d84f92101ef23540877b2074e88836c2e Cydni <cydniai@icloud.com> 1769934313 -0600	pull origin main: Fast-forward
+4a07849d84f92101ef23540877b2074e88836c2e 9d93c5b77cac1083314aeaea27f137a8823beb43 Cydni <cydniai@icloud.com> 1769954317 -0600	commit: Fix Clerk sign-in redirect for protected routes
+9d93c5b77cac1083314aeaea27f137a8823beb43 24c421d6c228ebaba554e54e09cbd68c6c474c1f Cydni <cydniai@icloud.com> 1769954522 -0600	commit: Add Clerk auth URL fallbacks
+24c421d6c228ebaba554e54e09cbd68c6c474c1f 8db569398c41daae46aa10e075046fe2ea95d53b Cydni <cydniai@icloud.com> 1769956100 -0600	commit: fix: adjust Clerk middleware redirects
+8db569398c41daae46aa10e075046fe2ea95d53b 1cdefb1da6c647c74497f4d079b26ed9053608b7 Cydni <cydniai@icloud.com> 1769960076 -0600	commit: Fix Clerk middleware redirect for unauthenticated
+1cdefb1da6c647c74497f4d079b26ed9053608b7 650fa9fa657161ad9fdff51b24e3c56b1a46a3c0 Cydni <cydniai@icloud.com> 1769964767 -0600	commit: fix: use auth.protect() with header sanitization for middleware
+650fa9fa657161ad9fdff51b24e3c56b1a46a3c0 f8f80cb4e11843e2a5e487a530d8d173d03eb235 Cydni <cydniai@icloud.com> 1769965847 -0600	commit: fix: resolve TypeScript errors in Convex test files
+f8f80cb4e11843e2a5e487a530d8d173d03eb235 636a53b78668963f59e79fb7419cde3b82201e54 Cydni <cydniai@icloud.com> 1769966214 -0600	commit: fix: parse JSON content in Mission Pulse event summaries
+636a53b78668963f59e79fb7419cde3b82201e54 dc494e76afca60204df7ae24e59a88e4ed173dee Cydni <cydniai@icloud.com> 1769968041 -0600	commit: chore: update Convex generated types
+dc494e76afca60204df7ae24e59a88e4ed173dee 703d5f59f3ef16026692556d53ffe68099c3287b Cydni <cydniai@icloud.com> 1769968434 -0600	commit: fix: improve Mission Pulse event summaries for system events
+703d5f59f3ef16026692556d53ffe68099c3287b 1d6db59c865e8b84cc9795da220c827bf5112e10 Cydni <cydniai@icloud.com> 1769968584 -0600	commit: fix: sanitize request headers to prevent MIDDLEWARE_INVOCATION_FAILED
+1d6db59c865e8b84cc9795da220c827bf5112e10 107cc17dcc8600e4d032bd6e26914d2d689f0609 Cydni <cydniai@icloud.com> 1769968679 -0600	commit: fix: catch header encoding errors in middleware
+107cc17dcc8600e4d032bd6e26914d2d689f0609 8df6a9377829e8d87285257205c38dd0ff1d5f07 Cydni <cydniai@icloud.com> 1769968744 -0600	commit: fix: restore working middleware with config.matcher
+8df6a9377829e8d87285257205c38dd0ff1d5f07 3459a640fc7125c97918c45a25bd1210d609cfd6 Cydni <cydniai@icloud.com> 1769968817 -0600	commit: fix: simplify middleware to debug Vercel edge issue
+3459a640fc7125c97918c45a25bd1210d609cfd6 fd309efe42a7e4d89f1b23b2a19521d85e6ee74e Cydni <cydniai@icloud.com> 1769968841 -0600	commit: temp: disable middleware to restore site access
+fd309efe42a7e4d89f1b23b2a19521d85e6ee74e f3dc503ca5a863eacd4cc48dffc1a1a084909711 Cydni <cydniai@icloud.com> 1769968874 -0600	commit: fix: add explicit no-op middleware to clear cache
+f3dc503ca5a863eacd4cc48dffc1a1a084909711 0525de45884787c25ec4522e54ce07442c6ca8de Cydni <cydniai@icloud.com> 1769968906 -0600	commit: fix: restore Clerk auth with defensive error handling
+0525de45884787c25ec4522e54ce07442c6ca8de a39bf1fb6c90fd9713928d74db660efefd657002 Cydni <cydniai@icloud.com> 1769969156 -0600	commit: fix: add getStatus query for agent detail page
+a39bf1fb6c90fd9713928d74db660efefd657002 31d20e99f4da0f748883b8602e33f0fa3caf089e Cydni <cydniai@icloud.com> 1769970523 -0600	commit: chore: trigger Vercel redeploy
+31d20e99f4da0f748883b8602e33f0fa3caf089e e5e8754c31f56c70aee3e26cc6cf2646956d0404 Cydni <cydniai@icloud.com> 1769970781 -0600	commit: fix: agent detail page uses correct get query with fallback lookup
+e5e8754c31f56c70aee3e26cc6cf2646956d0404 45d6b263e69b10be2d73540c2a974406367bd4bf Cydni <cydniai@icloud.com> 1769972564 -0600	commit: chore: force Vercel redeploy - agent page fix
+45d6b263e69b10be2d73540c2a974406367bd4bf c8a0aa1cf04d24e1c80e207b5e02079532dbeb48 Cydni <cydniai@icloud.com> 1769972723 -0600	commit: fix: add NextFetchEvent to middleware signature for Clerk
+c8a0aa1cf04d24e1c80e207b5e02079532dbeb48 3b05e4ff00aab0be72133f85c40fa55d18e77497 Cydni <cydniai@icloud.com> 1769973032 -0600	commit: fix: agents.get query now looks in both agents and agentStatus tables
+3b05e4ff00aab0be72133f85c40fa55d18e77497 693e7d0deb35bbb5cb653cd0919f204232b9e59a Cydni <cydniai@icloud.com> 1769980350 -0600	commit: chore: trigger Vercel redeploy for env var refresh
+693e7d0deb35bbb5cb653cd0919f204232b9e59a ce1740eee0a58cb486e4ee29f70cbc263487bf27 Cydni <cydniai@icloud.com> 1769980571 -0600	commit: fix: decisions.listByAgent accepts string ID and normalizes
+ce1740eee0a58cb486e4ee29f70cbc263487bf27 eef0f212561978df2cc5f9b2cc700eb32aa80b65 Cydni <cydniai@icloud.com> 1769981802 -0600	commit: fix: use React.use() for async params in Next.js 15+
+eef0f212561978df2cc5f9b2cc700eb32aa80b65 2eab97a519095bde237bb59253e08abe88b23e2f Cydni <cydniai@icloud.com> 1769982696 -0600	commit: fix: only show HeartbeatIndicator for offline/paused states

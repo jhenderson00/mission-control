@@ -481,6 +481,67 @@ describe("agents functions", () => {
     process.env.BRIDGE_SECRET = originalSecret;
   });
 
+  it("handles agent metadata sync http payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const ctx = { runMutation: vi.fn(async () => {}) };
+
+    const unauthorized = await asHttpAction(agents.syncAgentMetadataHttp)(
+      ctx as never,
+      new Request("https://example.test/agents/sync", {
+        method: "POST",
+        body: "{}",
+      })
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const invalidJson = await asHttpAction(agents.syncAgentMetadataHttp)(
+      ctx as never,
+      new Request("https://example.test/agents/sync", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidPayload = await asHttpAction(agents.syncAgentMetadataHttp)(
+      ctx as never,
+      new Request("https://example.test/agents/sync", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{}",
+      })
+    );
+    expect(invalidPayload.status).toBe(400);
+
+    const validPayload = await asHttpAction(agents.syncAgentMetadataHttp)(
+      ctx as never,
+      new Request("https://example.test/agents/sync", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify([
+          {
+            agentId: "agent_bridge",
+            name: "Bridge Agent",
+            type: "executor",
+            model: "m1",
+            host: "gateway",
+          },
+          {
+            agentId: "agent_bridge_two",
+            status: "idle",
+          },
+        ]),
+      })
+    );
+
+    expect(validPayload.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(2);
+
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
+
   it("handles working memory http payloads", async () => {
     const originalSecret = process.env.BRIDGE_SECRET;
     process.env.BRIDGE_SECRET = "secret";
