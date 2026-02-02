@@ -1,70 +1,40 @@
-# CYD-145: Fix Dashboard Agent Visibility
+# CYD-116: Pending Operations Tracking & Optimistic Updates
 
-## Problem
-Agent lifecycle data is written to Convex (`agentStatus` table) but the dashboard UI doesn't display live agent activity. Agent cards show stale or no status.
+## Your Role
+You are **Friday** 🔧, the Developer Specialist. Implement this feature end-to-end.
 
-## Root Cause
-The `agentStatus.agentId` field may contain bridge agent IDs (like "scout") instead of Convex document IDs, causing a mismatch when the UI looks up status by `agent._id`.
+## Objective
+Implement pending operation state management with optimistic UI for agent control actions.
 
-## Debug First
-Before making changes, add console.log statements to understand the data:
+## Implementation Tasks
 
-1. In `src/components/agents/agent-status-grid.tsx`:
-   - Log `agentIds` being passed to `useAgentStatus`
-   - Log `statusByAgent` map contents
-   - Log what `statusByAgent.get(agent._id)` returns for each agent
+### Convex Queries
+- [ ] Active operations by agent (for detail view)
+- [ ] Recent operations by operator (for operator view)
+- [ ] Bulk operation breakdowns (for bulk status)
 
-2. Check the Convex data directly:
-   - What does `listStatus` return?
-   - What are the actual `agentId` values in `agentStatus` table?
+### Optimistic UI Pattern
+**Non-destructive (pause/resume/priority/redirect):**
+- Immediately update UI with "pending" badge
+- Subscribe to Convex for operation status
+- Reconcile on ack, revert on failure
 
-## Key Files
+**Destructive (kill/restart):**
+- Show "pending" state but don't flip status until ack
+- Clear progress/timeout messaging
 
-### Backend
-- `convex/agents.ts` - Contains `listStatus` query that returns agent status data
-  - The query maps `bridgeAgentId` to Convex IDs - verify this works
-  - Check the `bridgeToConvex` mapping logic
+### Client State
+- Small Zustand store or React state for staging optimistic updates
+- Merge with Convex subscription data
+- Auto-cleanup completed operations after delay
 
-### Frontend
-- `src/lib/realtime/use-agent-status.ts` - Hook that fetches live status
-- `src/components/agents/agent-status-grid.tsx` - Grid component that displays agents
-  - Uses `useAgentStatus({ agentIds })` to get live data
-  - Passes `statusByAgent.get(agent._id)?.status` as `heartbeatStatus`
+### Status Display
+- Pending operations visible in agent detail view
+- Status badges: queued → sent → acked/failed/timed-out
+- Error messages with retry action
 
-### Main Dashboard
-- `src/app/(dashboard)/page.tsx` - Main dashboard page
-  - Uses `useQuery(api.agents.listWithTasks)` to get agents
-  - Passes agents to `AgentStatusGrid`
+## Reference
+See `specs/prd-cyd97-agent-controls.md` §3 Story 6, §4 (Optimistic UI)
 
-## Tasks
-
-### 1. Fix ID Mapping
-The `listStatus` query in `convex/agents.ts` has logic to map `bridgeAgentId` to Convex IDs. Verify it works:
-- When `agentStatus.agentId` is "scout", it should be mapped to Scout's Convex `_id`
-- The response should use Convex IDs so the UI can look them up
-
-### 2. Update Agent Cards to Show Working Memory
-In `agent-status-grid.tsx`, the `AgentCard` component should display:
-- Current task from `workingMemory.currentTask`
-- Status from `workingMemory.status`
-- Time since last activity
-
-Update the card to show this info when an agent is busy.
-
-### 3. Ensure Real-time Updates
-- Verify the Convex subscription triggers re-renders
-- Check that `useAgentStatus` hook properly updates when data changes
-
-## Acceptance Criteria
-- [ ] Agent cards show live status (online/busy/offline/paused)
-- [ ] When an agent is busy, show the current task on the card
-- [ ] Dashboard updates in real-time when agent status changes
-- [ ] No console errors related to ID mismatches
-
-## Testing
-After making changes:
-1. Start the dev server: `npm run dev`
-2. Run a test: `curl -X POST "https://fast-dodo-788.convex.site/agent/start" -H "Content-Type: application/json" -d '{"agentId":"scout","sessionId":"test-123","task":"Test task"}'`
-3. Check if Scout's card shows "busy" status and the task
-4. Run complete: `curl -X POST "https://fast-dodo-788.convex.site/agent/complete" -H "Content-Type: application/json" -d '{"agentId":"scout","sessionId":"test-123","exitCode":0}'`
-5. Check if Scout's card shows "online" status
+## Commit Message
+When complete: "feat(cyd-116): Pending operations tracking with optimistic UI"
