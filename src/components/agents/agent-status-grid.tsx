@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -23,12 +23,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { AgentSummary, AgentType, AgentStatus } from "@/lib/agent-types";
-
-type HeartbeatStatus = "online" | "offline" | "busy" | "paused";
+import type { AgentStatusRecord } from "@/lib/realtime";
 
 type AgentCardProps = {
   agent: AgentSummary;
-  heartbeatStatus?: HeartbeatStatus;
+  statusRecord?: AgentStatusRecord;
   isSelected: boolean;
   onSelectionChange: (agentId: string, isSelected: boolean) => void;
 };
@@ -103,7 +102,7 @@ function ProgressBar({ status }: { status: AgentStatus }): React.ReactElement {
 
 function AgentCard({
   agent,
-  heartbeatStatus,
+  statusRecord,
   isSelected,
   onSelectionChange,
 }: AgentCardProps): React.ReactElement {
@@ -111,6 +110,17 @@ function AgentCard({
   const config = statusConfig[agent.status];
   const StatusIcon = config.icon;
   const checkboxId = `agent-select-${agent._id}`;
+  const presenceStatus = statusRecord?.status;
+  const workingMemory = statusRecord?.workingMemory;
+  const isBusy = presenceStatus === "busy";
+  const lastActivity = statusRecord?.lastActivity ?? statusRecord?.lastHeartbeat;
+  const activityLabel = lastActivity
+    ? `Last activity ${formatRelativeTime(lastActivity, "just now")}`
+    : formatDuration(agent.startedAt, "Idle");
+  const currentTaskLabel =
+    isBusy && workingMemory?.currentTask
+      ? workingMemory.currentTask
+      : agent.currentTask?.title;
 
   return (
     <Link href={`/agents/${agent._id}`}>
@@ -168,10 +178,9 @@ function AgentCard({
                   {agent.status}
                 </span>
               </div>
-              {/* Only show heartbeat when it indicates a problem (offline/paused) */}
-              {(heartbeatStatus === "offline" || heartbeatStatus === "paused") && (
+              {presenceStatus && (
                 <HeartbeatIndicator
-                  status={heartbeatStatus}
+                  status={presenceStatus}
                   className="text-[9px] px-1.5 py-0"
                 />
               )}
@@ -179,11 +188,29 @@ function AgentCard({
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-3">
-          {agent.currentTask ? (
+          {isBusy && workingMemory ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Working memory</p>
+              <p className="text-sm text-foreground truncate">
+                {workingMemory.currentTask}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="h-5 px-2 text-[10px] uppercase tracking-wide"
+                >
+                  {workingMemory.status}
+                </Badge>
+                {workingMemory.progress && (
+                  <span className="truncate">{workingMemory.progress}</span>
+                )}
+              </div>
+            </div>
+          ) : currentTaskLabel ? (
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Current task</p>
               <p className="text-sm text-foreground truncate">
-                {agent.currentTask.title}
+                {currentTaskLabel}
               </p>
             </div>
           ) : (
@@ -195,7 +222,7 @@ function AgentCard({
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              <span>{formatDuration(agent.startedAt) || "Idle"}</span>
+              <span>{activityLabel}</span>
             </div>
             <Badge variant="outline" className="text-[10px] h-5 max-w-[140px] truncate">
               {agent.model}
@@ -419,15 +446,18 @@ export function AgentStatusGrid({
             Active Agents
           </h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {activeAgents.map((agent) => (
-              <AgentCard
-                key={agent._id}
-                agent={agent}
-                heartbeatStatus={statusByAgent.get(agent._id)?.status}
-                isSelected={selectedAgentIds.has(agent._id)}
-                onSelectionChange={handleSelectionChange}
-              />
-            ))}
+            {activeAgents.map((agent) => {
+              const statusRecord = statusByAgent.get(agent._id);
+              return (
+                <AgentCard
+                  key={agent._id}
+                  agent={agent}
+                  statusRecord={statusRecord}
+                  isSelected={selectedAgentIds.has(agent._id)}
+                  onSelectionChange={handleSelectionChange}
+                />
+              );
+            })}
           </div>
         </section>
       )}
@@ -438,15 +468,18 @@ export function AgentStatusGrid({
             Standby
           </h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {standbyAgents.map((agent) => (
-              <AgentCard
-                key={agent._id}
-                agent={agent}
-                heartbeatStatus={statusByAgent.get(agent._id)?.status}
-                isSelected={selectedAgentIds.has(agent._id)}
-                onSelectionChange={handleSelectionChange}
-              />
-            ))}
+            {standbyAgents.map((agent) => {
+              const statusRecord = statusByAgent.get(agent._id);
+              return (
+                <AgentCard
+                  key={agent._id}
+                  agent={agent}
+                  statusRecord={statusRecord}
+                  isSelected={selectedAgentIds.has(agent._id)}
+                  onSelectionChange={handleSelectionChange}
+                />
+              );
+            })}
           </div>
         </section>
       )}
