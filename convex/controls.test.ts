@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as controls from "./controls";
+import * as agents from "./agents";
 import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 const originalEnv = {
@@ -24,6 +25,12 @@ function createActionCtx() {
     }
     throw new Error("Unknown mutation args");
   });
+  const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
+    if ("id" in args) {
+      return asHandler(agents.resolveBridgeAgentId)._handler(base, args as never);
+    }
+    throw new Error("Unknown query args");
+  });
 
   const ctx = {
     ...base,
@@ -31,9 +38,10 @@ function createActionCtx() {
       getUserIdentity: vi.fn().mockResolvedValue({ subject: "user_1" }),
     },
     runMutation,
+    runQuery,
   };
 
-  return { ctx, base, runMutation };
+  return { ctx, base, runMutation, runQuery };
 }
 
 function mockBridgeResponse(payload: Record<string, unknown>, ok = true) {
@@ -148,6 +156,33 @@ describe("controls", () => {
     expect(result.ok).toBe(true);
     expect(result.status).toBe("acked");
     expect(result.bridgeStatus).toBe("accepted");
+  });
+
+  it("dispatches using bridge agent ids when mapped", async () => {
+    const { ctx, base } = createActionCtx();
+    const agentId = await base.db.insert("agents", {
+      name: "Mapped",
+      status: "idle",
+      type: "executor",
+      model: "m1",
+      host: "local",
+      bridgeAgentId: "agent_bridge",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    mockBridgeResponse({ requestId: "req_bridge", status: "accepted" });
+
+    await asHandler(controls.dispatch)._handler(ctx as never, {
+      agentId: agentId as never,
+      command: "agent.pause",
+      requestId: "req_bridge",
+    });
+
+    const fetchMock = vi.mocked(globalThis.fetch);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const body = init?.body ? JSON.parse(init.body as string) : {};
+    expect(body.agentId).toBe("agent_bridge");
   });
 
   it("handles rejected acknowledgments", async () => {

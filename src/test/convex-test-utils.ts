@@ -211,6 +211,10 @@ class QueryBuilder {
   async take(count: number) {
     return [...this.items].slice(0, count);
   }
+
+  async first() {
+    return this.items[0] ?? null;
+  }
 }
 
 class InMemoryDB {
@@ -249,6 +253,13 @@ class InMemoryDB {
       if (match) return match;
     }
     return null;
+  }
+
+  normalizeId(table: TableName, id: string) {
+    if (typeof id !== "string") {
+      return null;
+    }
+    return this.tables[table].some((item) => item._id === id) ? id : null;
   }
 
   async patch(id: string, updates: Record<string, unknown>) {

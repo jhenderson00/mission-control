@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Doc, Id } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import { query, mutation, internalMutation, httpAction } from "./_generated/server";
+import { normalizeAgentIdForLookup, resolveAgentRecord } from "./agent-linking";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -38,7 +39,7 @@ const presencePayloadSchema = z
   .passthrough();
 
 const statusUpdateSchema = z.object({
-  agentId: z.string(),
+  agentId: z.string().trim().min(1),
   status: z.enum(["online", "offline", "busy", "paused"]),
   lastSeen: z.number(),
   sessionInfo: z.unknown().optional(),
@@ -47,7 +48,7 @@ const statusUpdateSchema = z.object({
 const statusUpdateBatchSchema = z.union([statusUpdateSchema, z.array(statusUpdateSchema)]);
 
 const workingMemorySchema = z.object({
-  agentId: z.string(),
+  agentId: z.string().trim().min(1),
   currentTask: z.string(),
   status: z.string(),
   progress: z.string().optional(),
@@ -57,6 +58,40 @@ const workingMemorySchema = z.object({
 const workingMemoryBatchSchema = z.union([
   workingMemorySchema,
   z.array(workingMemorySchema),
+]);
+
+const agentTypeSchema = z.enum([
+  "coordinator",
+  "planner",
+  "executor",
+  "critic",
+  "specialist",
+]);
+
+const agentStatusSchema = z.enum([
+  "idle",
+  "active",
+  "blocked",
+  "failed",
+]);
+
+const agentMetadataSchema = z
+  .object({
+    agentId: z.string().trim().min(1),
+    name: z.string().trim().min(1).optional(),
+    type: agentTypeSchema.optional(),
+    model: z.string().trim().min(1).optional(),
+    host: z.string().trim().min(1).optional(),
+    status: agentStatusSchema.optional(),
+    sessionId: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
+    tags: z.array(z.string().trim().min(1)).optional(),
+  })
+  .passthrough();
+
+const agentMetadataBatchSchema = z.union([
+  agentMetadataSchema,
+  z.array(agentMetadataSchema),
 ]);
 
 function normalizeTimestamp(value: string | undefined, fallback: number): number {
@@ -83,6 +118,11 @@ function resolveSessionKeyFromInfo(value: unknown): string | undefined {
     resolveString(record.session_id)
   );
 }
+
+const DEFAULT_AGENT_TYPE = "executor";
+const DEFAULT_AGENT_MODEL = "unknown";
+const DEFAULT_AGENT_HOST = "gateway";
+const DEFAULT_AGENT_STATUS = "idle";
 
 async function upsertStatus(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -174,20 +214,34 @@ export const list = query({
 export const get = query({
   args: { id: v.string() },
   handler: async (ctx, args) => {
+    const normalizedInput = normalizeAgentIdForLookup(args.id);
+    if (!normalizedInput) {
+      return null;
+    }
     // Try agents table first
-    const agentId = ctx.db.normalizeId("agents", args.id);
+    const agentId = ctx.db.normalizeId("agents", normalizedInput);
     if (agentId) {
       return await ctx.db.get(agentId);
     }
+    // Try agents table by bridge agent id
+    const agentByBridge = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) =>
+        q.eq("bridgeAgentId", normalizedInput)
+      )
+      .first();
+    if (agentByBridge) {
+      return agentByBridge;
+    }
     // Try agentStatus table (grid links use this)
-    const statusId = ctx.db.normalizeId("agentStatus", args.id);
+    const statusId = ctx.db.normalizeId("agentStatus", normalizedInput);
     if (statusId) {
       return await ctx.db.get(statusId);
     }
     // Fallback: search agentStatus by agentId string
     const statusByAgentId = await ctx.db
       .query("agentStatus")
-      .filter((q) => q.eq(q.field("agentId"), args.id))
+      .filter((q) => q.eq(q.field("agentId"), normalizedInput))
       .first();
     if (statusByAgentId) {
       return statusByAgentId;
@@ -203,25 +257,48 @@ export const get = query({
 export const getStatus = query({
   args: { id: v.string() },
   handler: async (ctx, args) => {
+    const normalizedInput = normalizeAgentIdForLookup(args.id);
+    if (!normalizedInput) {
+      return null;
+    }
     // Try agentStatus table first by document ID
-    const statusId = ctx.db.normalizeId("agentStatus", args.id);
+    const statusId = ctx.db.normalizeId("agentStatus", normalizedInput);
     if (statusId) {
       return await ctx.db.get(statusId);
     }
-    // Try agents table by document ID
-    const agentDocId = ctx.db.normalizeId("agents", args.id);
+    // Resolve agent status via agents table if ID is for an agent
+    const agentDocId = ctx.db.normalizeId("agents", normalizedInput);
     if (agentDocId) {
-      return await ctx.db.get(agentDocId);
+      const agent = await ctx.db.get(agentDocId);
+      const bridgeAgentId = agent?.bridgeAgentId ?? normalizedInput;
+      return await ctx.db
+        .query("agentStatus")
+        .withIndex("by_agent", (q) => q.eq("agentId", bridgeAgentId))
+        .first();
     }
     // Fallback: search agentStatus by agentId string (e.g., "main")
-    const statusByAgentId = await ctx.db
+    return await ctx.db
       .query("agentStatus")
-      .filter((q) => q.eq(q.field("agentId"), args.id))
+      .withIndex("by_agent", (q) => q.eq("agentId", normalizedInput))
       .first();
-    if (statusByAgentId) {
-      return statusByAgentId;
+  },
+});
+
+/**
+ * Resolve a bridge agentId for a given identifier (Convex ID or bridge ID).
+ */
+export const resolveBridgeAgentId = query({
+  args: { id: v.string() },
+  handler: async (ctx, args): Promise<string | null> => {
+    const normalizedInput = normalizeAgentIdForLookup(args.id);
+    if (!normalizedInput) {
+      return null;
     }
-    return null;
+    const agent = await resolveAgentRecord(ctx, normalizedInput);
+    if (agent?.bridgeAgentId) {
+      return agent.bridgeAgentId;
+    }
+    return normalizedInput;
   },
 });
 
@@ -345,10 +422,15 @@ export const listStatus = query({
     agentIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentStatus">>> => {
-    if (args.agentIds && args.agentIds.length > 0) {
+    const requestedAgentIds =
+      args.agentIds
+        ?.map((id) => normalizeAgentIdForLookup(id))
+        .filter((id): id is string => Boolean(id)) ?? [];
+
+    if (requestedAgentIds.length > 0) {
       // Look up agents to get their bridgeAgentId mappings
       const agents = await Promise.all(
-        args.agentIds.map(async (id) => {
+        requestedAgentIds.map(async (id) => {
           try {
             return await ctx.db.get(id as Id<"agents">);
           } catch {
@@ -363,7 +445,7 @@ export const listStatus = query({
       
       for (let i = 0; i < agents.length; i++) {
         const agent = agents[i];
-        const convexId = args.agentIds[i];
+        const convexId = requestedAgentIds[i];
         if (agent?.bridgeAgentId) {
           bridgeIds.push(agent.bridgeAgentId);
           bridgeToConvex.set(agent.bridgeAgentId, convexId);
@@ -393,7 +475,30 @@ export const listStatus = query({
       });
     }
 
-    return await ctx.db.query("agentStatus").collect();
+    const statuses = await ctx.db.query("agentStatus").collect();
+    if (statuses.length === 0) {
+      return statuses;
+    }
+
+    const agents = await ctx.db.query("agents").collect();
+    const bridgeToConvex = new Map<string, string>();
+    for (const agent of agents) {
+      if (agent.bridgeAgentId) {
+        bridgeToConvex.set(agent.bridgeAgentId, agent._id);
+      }
+    }
+
+    if (bridgeToConvex.size === 0) {
+      return statuses;
+    }
+
+    return statuses.map((status) => {
+      const convexId = bridgeToConvex.get(status.agentId);
+      if (convexId) {
+        return { ...status, agentId: convexId };
+      }
+      return status;
+    });
   },
 });
 
@@ -405,9 +510,14 @@ export const listWorkingMemory = query({
     agentIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    if (args.agentIds && args.agentIds.length > 0) {
+    const requestedAgentIds =
+      args.agentIds
+        ?.map((id) => normalizeAgentIdForLookup(id))
+        .filter((id): id is string => Boolean(id)) ?? [];
+
+    if (requestedAgentIds.length > 0) {
       const agents = await Promise.all(
-        args.agentIds.map(async (id) => {
+        requestedAgentIds.map(async (id) => {
           try {
             return await ctx.db.get(id as Id<"agents">);
           } catch {
@@ -421,7 +531,7 @@ export const listWorkingMemory = query({
 
       for (let i = 0; i < agents.length; i++) {
         const agent = agents[i];
-        const convexId = args.agentIds[i];
+        const convexId = requestedAgentIds[i];
         if (agent?.bridgeAgentId) {
           bridgeIds.push(agent.bridgeAgentId);
           bridgeToConvex.set(agent.bridgeAgentId, convexId);
@@ -448,7 +558,30 @@ export const listWorkingMemory = query({
       });
     }
 
-    return await ctx.db.query("agentWorkingMemory").order("desc").collect();
+    const memories = await ctx.db.query("agentWorkingMemory").order("desc").collect();
+    if (memories.length === 0) {
+      return memories;
+    }
+
+    const agents = await ctx.db.query("agents").collect();
+    const bridgeToConvex = new Map<string, string>();
+    for (const agent of agents) {
+      if (agent.bridgeAgentId) {
+        bridgeToConvex.set(agent.bridgeAgentId, agent._id);
+      }
+    }
+
+    if (bridgeToConvex.size === 0) {
+      return memories;
+    }
+
+    return memories.map((memory) => {
+      const convexId = bridgeToConvex.get(memory.agentId);
+      if (convexId) {
+        return { ...memory, agentId: convexId };
+      }
+      return memory;
+    });
   },
 });
 
@@ -463,10 +596,14 @@ export const updateAgentStatus = mutation({
     sessionInfo: v.optional(v.any()),
   },
   handler: async (ctx, args): Promise<void> => {
+    const agentId = normalizeAgentIdForLookup(args.agentId);
+    if (!agentId) {
+      throw new Error("Invalid agentId");
+    }
     const existing = await ctx.db
       .query("agentStatus")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_agent", (q: any) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q: any) => q.eq("agentId", agentId))
       .take(1);
 
     const current = existing[0] ?? null;
@@ -479,7 +616,7 @@ export const updateAgentStatus = mutation({
     await upsertStatus(
       ctx,
       {
-        agentId: args.agentId,
+        agentId,
         status: args.status,
         lastHeartbeat: args.lastSeen,
         lastActivity: args.lastSeen,
@@ -503,6 +640,10 @@ export const upsertWorkingMemory = mutation({
     nextSteps: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    const agentId = normalizeAgentIdForLookup(args.agentId);
+    if (!agentId) {
+      throw new Error("Invalid agentId");
+    }
     const now = Date.now();
     const workingMemory = {
       currentTask: args.currentTask,
@@ -514,7 +655,7 @@ export const upsertWorkingMemory = mutation({
 
     const existing = await ctx.db
       .query("agentWorkingMemory")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
       .take(1);
 
     const current = existing[0];
@@ -524,7 +665,7 @@ export const upsertWorkingMemory = mutation({
       recordId = current._id;
     } else {
       recordId = await ctx.db.insert("agentWorkingMemory", {
-        agentId: args.agentId,
+        agentId,
         ...workingMemory,
         createdAt: now,
       });
@@ -532,7 +673,7 @@ export const upsertWorkingMemory = mutation({
 
     const statusRecord = await ctx.db
       .query("agentStatus")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
       .take(1);
 
     if (statusRecord[0]) {
@@ -540,6 +681,83 @@ export const upsertWorkingMemory = mutation({
     }
 
     return await ctx.db.get(recordId);
+  },
+});
+
+/**
+ * Upsert agent metadata from bridge snapshots.
+ */
+export const upsertAgentMetadata = mutation({
+  args: {
+    agentId: v.string(),
+    name: v.optional(v.string()),
+    type: v.optional(
+      v.union(
+        v.literal("coordinator"),
+        v.literal("planner"),
+        v.literal("executor"),
+        v.literal("critic"),
+        v.literal("specialist")
+      )
+    ),
+    model: v.optional(v.string()),
+    host: v.optional(v.string()),
+    status: v.optional(
+      v.union(
+        v.literal("idle"),
+        v.literal("active"),
+        v.literal("blocked"),
+        v.literal("failed")
+      )
+    ),
+    sessionId: v.optional(v.string()),
+    description: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args): Promise<Id<"agents">> => {
+    const agentId = normalizeAgentIdForLookup(args.agentId);
+    if (!agentId) {
+      throw new Error("Invalid agentId");
+    }
+
+    const now = Date.now();
+    const existing = await resolveAgentRecord(ctx, agentId);
+
+    const updates: Partial<Doc<"agents">> = {
+      updatedAt: now,
+    };
+
+    if (!existing?.bridgeAgentId) {
+      updates.bridgeAgentId = agentId;
+    }
+
+    if (args.name) updates.name = args.name;
+    if (args.type) updates.type = args.type;
+    if (args.model) updates.model = args.model;
+    if (args.host) updates.host = args.host;
+    if (args.status) updates.status = args.status;
+    if (args.sessionId) updates.sessionId = args.sessionId;
+    if (args.description) updates.description = args.description;
+    if (args.tags) updates.tags = args.tags;
+
+    if (existing) {
+      await ctx.db.patch(existing._id, updates);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("agents", {
+      name: args.name ?? agentId,
+      type: args.type ?? DEFAULT_AGENT_TYPE,
+      model: args.model ?? DEFAULT_AGENT_MODEL,
+      host: args.host ?? DEFAULT_AGENT_HOST,
+      status: args.status ?? DEFAULT_AGENT_STATUS,
+      bridgeAgentId: agentId,
+      sessionId: args.sessionId,
+      description: args.description,
+      tags: args.tags,
+      createdAt: now,
+      updatedAt: now,
+    });
   },
 });
 
@@ -572,6 +790,52 @@ export const updateAgentStatusHttp = httpAction(
     await Promise.all(
       updates.map((update) =>
         ctx.runMutation(api.agents.updateAgentStatus, update)
+      )
+    );
+
+    return new Response("ok");
+  }
+);
+
+/**
+ * HTTP endpoint for bridge-driven agent metadata sync.
+ */
+export const syncAgentMetadataHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("invalid json", { status: 400 });
+    }
+
+    const parsed = agentMetadataBatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response("invalid agent metadata payload", { status: 400 });
+    }
+
+    const updates = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+    await Promise.all(
+      updates.map((update) =>
+        ctx.runMutation(api.agents.upsertAgentMetadata, {
+          agentId: update.agentId,
+          name: update.name,
+          type: update.type,
+          model: update.model,
+          host: update.host,
+          status: update.status,
+          sessionId: update.sessionId,
+          description: update.description,
+          tags: update.tags,
+        })
       )
     );
 
@@ -739,16 +1003,21 @@ export const updateStatusFromEvent = internalMutation({
   handler: async (ctx, event): Promise<void> => {
     const now = Date.now();
     const eventTime = normalizeTimestamp(event.timestamp, now);
+    const normalizedEventAgentId = normalizeAgentIdForLookup(event.agentId);
 
     if (event.eventType === "presence") {
       const parsed = presencePayloadSchema.safeParse(event.payload);
       if (parsed.success && parsed.data.entries && parsed.data.entries.length > 0) {
         await Promise.all(
-          parsed.data.entries.map((entry) =>
-            upsertStatus(
+          parsed.data.entries.map((entry) => {
+            const entryAgentId = normalizeAgentIdForLookup(entry.deviceId);
+            if (!entryAgentId) {
+              return null;
+            }
+            return upsertStatus(
               ctx,
               {
-                agentId: entry.deviceId,
+                agentId: entryAgentId,
                 status: "online",
                 lastHeartbeat: normalizeTimestamp(entry.lastSeen, eventTime),
                 lastActivity: normalizeTimestamp(entry.lastSeen, eventTime),
@@ -756,18 +1025,21 @@ export const updateStatusFromEvent = internalMutation({
                 sessionInfo: entry,
               },
               { preservePaused: true, preserveBusy: true }
-            )
-          )
+            );
+          }).filter(Boolean)
         );
         return;
       }
     }
 
     if (event.eventType === "heartbeat" || event.eventType === "presence") {
+      if (!normalizedEventAgentId) {
+        return;
+      }
       await upsertStatus(
         ctx,
         {
-          agentId: event.agentId,
+          agentId: normalizedEventAgentId,
           status: "online",
           lastHeartbeat: eventTime,
           lastActivity: eventTime,

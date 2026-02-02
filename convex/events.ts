@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { z } from "zod";
 import { httpAction, internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { normalizeAgentIdForLookup, resolveBridgeAgentId } from "./agent-linking";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -19,7 +20,7 @@ const eventValidator = v.object({
 const eventSchema = z.object({
   eventId: z.string(),
   eventType: z.string(),
-  agentId: z.string(),
+  agentId: z.string().trim().min(1),
   sessionKey: z.string().optional(),
   timestamp: z.string(),
   sequence: z.number(),
@@ -432,9 +433,17 @@ export const listByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<NormalizedEvent[]> => {
+    const normalizedInput = normalizeAgentIdForLookup(args.agentId);
+    if (!normalizedInput) {
+      return [];
+    }
+    const bridgeAgentId = await resolveBridgeAgentId(ctx, normalizedInput);
+    if (!bridgeAgentId) {
+      return [];
+    }
     const events = await ctx.db
       .query("events")
-      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .withIndex("by_agent", (q) => q.eq("agentId", bridgeAgentId))
       .order("desc")
       .take(args.limit ?? 100);
 

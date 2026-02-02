@@ -68,6 +68,18 @@ export type AgentStatusUpdate = {
   sessionInfo?: Record<string, unknown>;
 };
 
+export type AgentMetadataUpdate = {
+  agentId: string;
+  name?: string;
+  type?: "coordinator" | "planner" | "executor" | "critic" | "specialist";
+  model?: string;
+  host?: string;
+  status?: "idle" | "active" | "blocked" | "failed";
+  sessionId?: string;
+  description?: string;
+  tags?: string[];
+};
+
 export type BridgeEvent = {
   eventId: string;
   eventType: string;

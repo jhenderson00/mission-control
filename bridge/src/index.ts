@@ -20,6 +20,7 @@ import type {
   GatewayConnectionState,
   GatewayEvent,
   HelloOkFrame,
+  AgentMetadataUpdate,
   AgentStatusUpdate,
   PresenceEntry,
   PresenceSnapshot,
@@ -146,6 +147,18 @@ function resolveString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function resolveStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const items = value
+    .map((entry) =>
+      typeof entry === "string" ? entry.trim() : null
+    )
+    .filter((entry): entry is string => Boolean(entry));
+  return items.length > 0 ? items : null;
+}
+
 function resolveRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object") {
     return value as Record<string, unknown>;
@@ -155,6 +168,39 @@ function resolveRecord(value: unknown): Record<string, unknown> | null {
 
 function resolveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeAgentType(value: unknown): AgentMetadataUpdate["type"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  switch (value.trim().toLowerCase()) {
+    case "coordinator":
+    case "planner":
+    case "executor":
+    case "critic":
+    case "specialist":
+      return value.trim().toLowerCase() as AgentMetadataUpdate["type"];
+    default:
+      return undefined;
+  }
+}
+
+function normalizeAgentStatus(
+  value: unknown
+): AgentMetadataUpdate["status"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  switch (value.trim().toLowerCase()) {
+    case "idle":
+    case "active":
+    case "blocked":
+    case "failed":
+      return value.trim().toLowerCase() as AgentMetadataUpdate["status"];
+    default:
+      return undefined;
+  }
 }
 
 function resolveAgentId(payload: unknown, fallback: string): string {
@@ -590,6 +636,90 @@ class Bridge {
     };
   }
 
+  private buildMetadataUpdates(payload: unknown): AgentMetadataUpdate[] {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const record = payload as Record<string, unknown>;
+    const agentsRaw = Array.isArray(record.agents) ? record.agents : null;
+    const updates: AgentMetadataUpdate[] = [];
+
+    if (agentsRaw && agentsRaw.length > 0) {
+      for (const agent of agentsRaw) {
+        if (!agent || typeof agent !== "object") {
+          continue;
+        }
+        const agentRecord = agent as Record<string, unknown>;
+        const agentIdRaw =
+          resolveString(agentRecord.agentId) ??
+          resolveString(agentRecord.id) ??
+          resolveString(agentRecord.deviceId) ??
+          resolveString(agentRecord.name);
+        if (!agentIdRaw) {
+          continue;
+        }
+        const normalizedAgentId = this.normalizeAgentId(agentIdRaw) ?? agentIdRaw;
+        if (!normalizedAgentId) {
+          continue;
+        }
+
+        const update: AgentMetadataUpdate = { agentId: normalizedAgentId };
+
+        const name =
+          resolveString(agentRecord.name) ??
+          resolveString(agentRecord.displayName) ??
+          resolveString(agentRecord.label);
+        if (name) update.name = name;
+
+        const model =
+          resolveString(agentRecord.model) ??
+          resolveString(agentRecord.modelId) ??
+          resolveString(agentRecord.model_id);
+        if (model) update.model = model;
+
+        const host =
+          resolveString(agentRecord.host) ??
+          resolveString(agentRecord.node) ??
+          resolveString(agentRecord.hostname);
+        if (host) update.host = host;
+
+        const type = normalizeAgentType(
+          resolveString(agentRecord.type) ?? resolveString(agentRecord.role)
+        );
+        if (type) update.type = type;
+
+        const status = normalizeAgentStatus(agentRecord.status);
+        if (status) update.status = status;
+
+        const sessionId =
+          resolveString(agentRecord.sessionId) ??
+          resolveString(agentRecord.session_id);
+        if (sessionId) update.sessionId = sessionId;
+
+        const description =
+          resolveString(agentRecord.description) ??
+          resolveString(agentRecord.summary);
+        if (description) update.description = description;
+
+        const tags =
+          resolveStringArray(agentRecord.tags) ??
+          resolveStringArray(agentRecord.labels);
+        if (tags) update.tags = tags;
+
+        updates.push(update);
+      }
+      return updates;
+    }
+
+    const fallbackAgentId = resolveString(record.defaultAgentId);
+    if (fallbackAgentId) {
+      const normalizedAgentId = this.normalizeAgentId(fallbackAgentId) ?? fallbackAgentId;
+      updates.push({ agentId: normalizedAgentId });
+    }
+
+    return updates;
+  }
+
   private buildHealthUpdates(payload: unknown): AgentStatusUpdate[] {
     if (!payload || typeof payload !== "object") {
       return [];
@@ -675,6 +805,15 @@ class Bridge {
   }
 
   private async handleHealthSnapshot(payload: unknown): Promise<void> {
+    const metadataUpdates = this.buildMetadataUpdates(payload);
+    if (metadataUpdates.length > 0) {
+      try {
+        await this.convex.syncAgentMetadata(metadataUpdates);
+      } catch (error) {
+        console.error("[bridge] failed to sync agent metadata", error);
+      }
+    }
+
     const updates = this.buildHealthUpdates(payload);
     if (updates.length === 0) {
       return;
@@ -1079,10 +1218,16 @@ class Bridge {
     const observedAt = parseTimestampMs(snapshot.observedAt, Date.now());
     const nextPresence = new Set<string>();
     const updates: AgentStatusUpdate[] = [];
+    const metadataUpdates: AgentMetadataUpdate[] = [];
+    const metadataSeen = new Set<string>();
 
     for (const entry of snapshot.entries) {
       const agentId = this.resolvePresenceAgentId(entry);
       nextPresence.add(agentId);
+      if (!metadataSeen.has(agentId)) {
+        metadataSeen.add(agentId);
+        metadataUpdates.push({ agentId });
+      }
 
       const lastSeen = parseTimestampMs(
         entry.lastSeen ?? entry.connectedAt,
@@ -1120,6 +1265,14 @@ class Bridge {
 
     this.presenceAgents.clear();
     nextPresence.forEach((agentId) => this.presenceAgents.add(agentId));
+
+    if (metadataUpdates.length > 0) {
+      try {
+        await this.convex.syncAgentMetadata(metadataUpdates);
+      } catch (error) {
+        console.error("[bridge] failed to sync presence metadata", error);
+      }
+    }
 
     if (updates.length === 0) {
       return;
