@@ -17,6 +17,7 @@ import {
   X,
   Rocket,
   Activity,
+  LifeBuoy,
 } from "lucide-react";
 
 export function MobileNav() {
@@ -55,6 +56,11 @@ export function MobileNav() {
       href: "/graph",
       label: "Graph",
       icon: Share2,
+    },
+    {
+      href: "/help",
+      label: "Help",
+      icon: LifeBuoy,
     },
   ];
 
