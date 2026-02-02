@@ -117,6 +117,41 @@ function formatDurationMs(durationMs: number | null): string | null {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
+function summarizeDiagnosticPayload(
+  eventType: string,
+  record: Record<string, unknown>
+): string {
+  const detail = resolveStringField(record, [
+    "message",
+    "detail",
+    "summary",
+    "error",
+    "errorMessage",
+    "description",
+    "note",
+  ]);
+  const label = resolveStringField(record, [
+    "eventType",
+    "type",
+    "name",
+    "kind",
+    "category",
+    "level",
+    "severity",
+    "code",
+  ]);
+  if (detail && label) {
+    return `${label}: ${detail}`;
+  }
+  if (detail) {
+    return detail;
+  }
+  if (label) {
+    return label;
+  }
+  return eventType;
+}
+
 function summarizePayload(eventType: string, payload: unknown): string {
   // Handle string payloads
   if (typeof payload === "string") {
@@ -139,6 +174,10 @@ function summarizePayload(eventType: string, payload: unknown): string {
   const record = payload as Record<string, unknown>;
   const delta = asRecord(record.delta);
   const summary = asRecord(record.summary);
+
+  if (eventType.startsWith("diagnostic")) {
+    return summarizeDiagnosticPayload(eventType, record);
+  }
 
   // Handle specific event types with human-readable summaries
   switch (eventType) {

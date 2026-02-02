@@ -12,6 +12,8 @@ import {
 } from "./control-commands";
 import { EventBuffer } from "./event-buffer";
 import { GatewayClient, parsePresencePayload } from "./gateway-client";
+import { extractDiagnosticEvents } from "./diagnostics";
+import { buildSubscriptionPlan } from "./subscriptions";
 import type {
   BridgeConfig,
   BridgeEvent,
@@ -401,13 +403,18 @@ class Bridge {
 
     if (supportsSubscribe) {
       try {
-        await this.gateway.subscribe([
+        const { events, includesPresence } = buildSubscriptionPlan(hello, [
           "agent",
           "chat",
           "heartbeat",
           "health",
         ]);
-        await this.gateway.subscribePresence();
+        if (events.length > 0) {
+          await this.gateway.subscribe(events);
+        }
+        if (!includesPresence) {
+          await this.gateway.subscribePresence();
+        }
       } catch (error) {
         console.error("[bridge] failed to subscribe to gateway", error);
       }
@@ -991,6 +998,15 @@ class Bridge {
       if (outputTokens !== null) payload.outputTokens = outputTokens;
       if (durationMs !== null) payload.durationMs = durationMs;
       derived.push(buildDerived("token_usage", payload));
+    }
+
+    const diagnosticEvents = extractDiagnosticEvents(payloadRecord, delta);
+    for (const diagnostic of diagnosticEvents) {
+      const payload: Record<string, unknown> = { ...diagnostic.payload };
+      if (status && payload.status === undefined) {
+        payload.status = status;
+      }
+      derived.push(buildDerived(diagnostic.eventType, payload));
     }
 
     return derived;

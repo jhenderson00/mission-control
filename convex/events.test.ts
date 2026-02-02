@@ -175,6 +175,16 @@ describe("events functions", () => {
       payload: { inputTokens: 120, outputTokens: 80, durationMs: 1530 },
       receivedAt: Date.now(),
     });
+    await ctx.db.insert("events", {
+      eventId: "evt_diag",
+      eventType: "diagnostic.warning",
+      agentId: "agent_8",
+      sessionKey: "session_8",
+      timestamp: new Date().toISOString(),
+      sequence: 8,
+      payload: { level: "warning", message: "Latency high" },
+      receivedAt: Date.now(),
+    });
 
     const recent = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
     const contents = recent.map((event: { content: string }) => event.content);
@@ -186,6 +196,7 @@ describe("events functions", () => {
         "Delta content",
         "ok",
         "agent",
+        "warning: Latency high",
       ])
     );
     expect(contents.some((content) => content.startsWith("Tool call"))).toBe(true);
