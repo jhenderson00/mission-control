@@ -422,6 +422,7 @@ class Bridge {
     });
     this.gateway.on("disconnected", () => {
       console.warn("[bridge] gateway disconnected");
+      void this.handleGatewayDisconnect();
     });
     this.gateway.on("error", (error: Error) => {
       console.error("[bridge] gateway error", error);
@@ -1294,6 +1295,55 @@ class Bridge {
       }
     } catch (error) {
       console.error("[bridge] failed to update agent statuses", error);
+    }
+  }
+
+  private async handleGatewayDisconnect(): Promise<void> {
+    if (this.presenceAgents.size === 0) {
+      return;
+    }
+
+    const observedAt = Date.now();
+    const updates: AgentStatusUpdate[] = [];
+
+    for (const agentId of this.presenceAgents) {
+      const activity = this.recentActivity.get(agentId);
+      const sessionInfo: Record<string, unknown> = {
+        reason: "gateway_disconnected",
+        lastSeen: observedAt,
+      };
+
+      if (activity?.sessionKey) {
+        sessionInfo.sessionKey = activity.sessionKey;
+      }
+      if (activity?.lastActivity) {
+        sessionInfo.lastActivity = activity.lastActivity;
+      }
+
+      updates.push({
+        agentId,
+        status: "offline",
+        lastSeen: observedAt,
+        sessionInfo,
+      });
+    }
+
+    this.presenceAgents.clear();
+
+    try {
+      await this.convex.updateAgentStatuses(updates);
+      if (this.logStatusSync) {
+        const preview = updates
+          .slice(0, 5)
+          .map((update) => `${update.agentId}:${update.status}`)
+          .join(", ");
+        const suffix = updates.length > 5 ? "..." : "";
+        console.log(
+          `[bridge] disconnect sync (${updates.length}): ${preview}${suffix}`
+        );
+      }
+    } catch (error) {
+      console.error("[bridge] failed to sync offline statuses", error);
     }
   }
 

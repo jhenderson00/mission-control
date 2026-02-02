@@ -53,6 +53,14 @@ describe("DashboardPage", () => {
       })
       .mockReturnValueOnce({
         total: 0,
+        online: 0,
+        offline: 0,
+        busy: 0,
+        paused: 0,
+        active: 0,
+      })
+      .mockReturnValueOnce({
+        total: 0,
         queued: 0,
         active: 0,
         blocked: 0,
