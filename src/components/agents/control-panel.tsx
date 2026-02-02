@@ -31,6 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   ArrowRight,
   Flame,
+  Loader2,
   Pause,
   PlayCircle,
   RefreshCw,
@@ -138,7 +139,7 @@ export function ControlPanel({
     actionKey: string,
     command: "agent.pause" | "agent.resume" | "agent.redirect" | "agent.priority.override" | "agent.kill" | "agent.restart",
     params?: Record<string, unknown>
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     if (disabled || !dispatch) {
       setStatus({
         tone: "error",
@@ -146,7 +147,7 @@ export function ControlPanel({
           ? "Controls are unavailable without a Convex connection."
           : "Controls API not deployed yet.",
       });
-      return;
+      return false;
     }
 
     const requestId = createRequestId();
@@ -166,6 +167,7 @@ export function ControlPanel({
     setPendingAction(actionKey);
     setStatus({ tone: "pending", message: "Dispatching control command..." });
 
+    let ok = false;
     try {
       const response = await dispatch({
         agentId,
@@ -179,6 +181,7 @@ export function ControlPanel({
         status: nextStatus,
         error: response.ok ? undefined : response.error,
       });
+      ok = response.ok;
 
       if (response.ok) {
         setStatus({
@@ -201,6 +204,8 @@ export function ControlPanel({
     } finally {
       setPendingAction(null);
     }
+
+    return ok;
   };
 
   const handlePause = async (): Promise<void> => {
@@ -239,14 +244,14 @@ export function ControlPanel({
     });
   };
 
-  const handleKill = async (): Promise<void> => {
-    await runCommand("kill", "agent.kill", {
+  const handleKill = async (): Promise<boolean> => {
+    return await runCommand("kill", "agent.kill", {
       sessionKey: sessionKey.trim() ? sessionKey.trim() : undefined,
     });
   };
 
-  const handleRestart = async (): Promise<void> => {
-    await runCommand("restart", "agent.restart");
+  const handleRestart = async (): Promise<boolean> => {
+    return await runCommand("restart", "agent.restart");
   };
 
   return (
@@ -414,6 +419,9 @@ export function ControlPanel({
             <Dialog
               open={killDialogOpen}
               onOpenChange={(open) => {
+                if (pendingAction === "kill") {
+                  return;
+                }
                 setKillDialogOpen(open);
                 if (!open) {
                   setKillConfirmation("");
@@ -426,7 +434,18 @@ export function ControlPanel({
                   {pendingAction === "kill" ? "Killing..." : "Kill"}
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent
+                onEscapeKeyDown={(event) => {
+                  if (pendingAction === "kill") {
+                    event.preventDefault();
+                  }
+                }}
+                onInteractOutside={(event) => {
+                  if (pendingAction === "kill") {
+                    event.preventDefault();
+                  }
+                }}
+              >
                 <DialogHeader>
                   <DialogTitle>Confirm kill</DialogTitle>
                   <DialogDescription>
@@ -474,6 +493,12 @@ export function ControlPanel({
                     />
                   </div>
                 </div>
+                {pendingAction === "kill" && (
+                  <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Awaiting bridge confirmation...
+                  </div>
+                )}
                 <DialogFooter>
                   <Button
                     variant="outline"
@@ -487,13 +512,22 @@ export function ControlPanel({
                     variant="destructive"
                     size="sm"
                     onClick={async () => {
-                      await handleKill();
-                      setKillDialogOpen(false);
-                      setKillConfirmation("");
+                      const ok = await handleKill();
+                      if (ok) {
+                        setKillDialogOpen(false);
+                        setKillConfirmation("");
+                      }
                     }}
                     disabled={!killConfirmed || isBlocked}
                   >
-                    {pendingAction === "kill" ? "Killing..." : "Confirm kill"}
+                    {pendingAction === "kill" ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Killing...
+                      </>
+                    ) : (
+                      "Confirm kill"
+                    )}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -502,6 +536,9 @@ export function ControlPanel({
             <Dialog
               open={restartDialogOpen}
               onOpenChange={(open) => {
+                if (pendingAction === "restart") {
+                  return;
+                }
                 setRestartDialogOpen(open);
                 if (!open) {
                   setRestartConfirmation("");
@@ -514,7 +551,18 @@ export function ControlPanel({
                   {pendingAction === "restart" ? "Restarting..." : "Restart"}
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent
+                onEscapeKeyDown={(event) => {
+                  if (pendingAction === "restart") {
+                    event.preventDefault();
+                  }
+                }}
+                onInteractOutside={(event) => {
+                  if (pendingAction === "restart") {
+                    event.preventDefault();
+                  }
+                }}
+              >
                 <DialogHeader>
                   <DialogTitle>Confirm restart</DialogTitle>
                   <DialogDescription>
@@ -562,6 +610,12 @@ export function ControlPanel({
                     />
                   </div>
                 </div>
+                {pendingAction === "restart" && (
+                  <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Awaiting bridge confirmation...
+                  </div>
+                )}
                 <DialogFooter>
                   <Button
                     variant="outline"
@@ -575,13 +629,22 @@ export function ControlPanel({
                     variant="destructive"
                     size="sm"
                     onClick={async () => {
-                      await handleRestart();
-                      setRestartDialogOpen(false);
-                      setRestartConfirmation("");
+                      const ok = await handleRestart();
+                      if (ok) {
+                        setRestartDialogOpen(false);
+                        setRestartConfirmation("");
+                      }
                     }}
                     disabled={!restartConfirmed || isBlocked}
                   >
-                    {pendingAction === "restart" ? "Restarting..." : "Confirm restart"}
+                    {pendingAction === "restart" ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Restarting...
+                      </>
+                    ) : (
+                      "Confirm restart"
+                    )}
                   </Button>
                 </DialogFooter>
               </DialogContent>
