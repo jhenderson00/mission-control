@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { z } from "zod";
 import type { Doc, Id } from "./_generated/dataModel";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { query, mutation, internalMutation, httpAction } from "./_generated/server";
 import { normalizeAgentIdForLookup, resolveAgentRecord } from "./agentLinking";
 
@@ -59,6 +59,29 @@ const workingMemoryBatchSchema = z.union([
   workingMemorySchema,
   z.array(workingMemorySchema),
 ]);
+
+const lifecycleStartSchema = z.object({
+  agentId: z.string().trim().min(1),
+  sessionId: z.string().trim().min(1),
+  task: z.string().trim().min(1),
+});
+
+const lifecycleHeartbeatSchema = z.object({
+  agentId: z.string().trim().min(1),
+  workingMemory: z.object({
+    currentTask: z.string(),
+    status: z.string(),
+    progress: z.string().optional(),
+    nextSteps: z.array(z.string()).optional(),
+  }),
+});
+
+const lifecycleCompleteSchema = z.object({
+  agentId: z.string().trim().min(1),
+  sessionId: z.string().trim().min(1),
+  exitCode: z.number(),
+  output: z.string().optional(),
+});
 
 const agentTypeSchema = z.enum([
   "coordinator",
@@ -139,6 +162,7 @@ async function upsertStatus(
     existing?: Doc<"agentStatus"> | null;
     preservePaused?: boolean;
     preserveBusy?: boolean;
+    clearSession?: boolean;
   }
 ): Promise<string> {
   const existing =
@@ -165,7 +189,7 @@ async function upsertStatus(
 
   const nextSessionInfo = status.sessionInfo ?? current?.sessionInfo;
   const nextCurrentSession =
-    status.status === "offline"
+    status.status === "offline" || options?.clearSession
       ? undefined
       : status.currentSession ?? current?.currentSession;
   const payload = {
@@ -594,6 +618,7 @@ export const updateAgentStatus = mutation({
     status: agentStatusValidator,
     lastSeen: v.number(),
     sessionInfo: v.optional(v.any()),
+    clearSession: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<void> => {
     const agentId = normalizeAgentIdForLookup(args.agentId);
@@ -607,11 +632,11 @@ export const updateAgentStatus = mutation({
       .take(1);
 
     const current = existing[0] ?? null;
-    const currentSession =
-      args.status === "offline"
-        ? undefined
-        : resolveSessionKeyFromInfo(args.sessionInfo) ??
-          current?.currentSession;
+    const shouldClearSession = args.status === "offline" || args.clearSession === true;
+    const currentSession = shouldClearSession
+      ? undefined
+      : resolveSessionKeyFromInfo(args.sessionInfo) ??
+        current?.currentSession;
 
     await upsertStatus(
       ctx,
@@ -623,7 +648,7 @@ export const updateAgentStatus = mutation({
         currentSession,
         sessionInfo: args.sessionInfo ?? current?.sessionInfo,
       },
-      { existing: current }
+      { existing: current, clearSession: shouldClearSession }
     );
   },
 });
@@ -912,6 +937,145 @@ export const listWorkingMemoryHttp = httpAction(
     return new Response(JSON.stringify(result), {
       headers: { "content-type": "application/json" },
     });
+  }
+);
+
+/**
+ * HTTP endpoint for agent lifecycle start.
+ */
+export const startAgentLifecycleHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("invalid json", { status: 400 });
+    }
+
+    const parsed = lifecycleStartSchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response("invalid start payload", { status: 400 });
+    }
+
+    const now = Date.now();
+    await ctx.runMutation(api.agents.updateAgentStatus, {
+      agentId: parsed.data.agentId,
+      status: "busy",
+      lastSeen: now,
+      sessionInfo: { sessionId: parsed.data.sessionId },
+    });
+
+    await ctx.runMutation(api.agents.upsertWorkingMemory, {
+      agentId: parsed.data.agentId,
+      currentTask: parsed.data.task,
+      status: "in-progress",
+    });
+
+    return new Response("ok");
+  }
+);
+
+/**
+ * HTTP endpoint for agent lifecycle heartbeats.
+ */
+export const heartbeatAgentLifecycleHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("invalid json", { status: 400 });
+    }
+
+    const parsed = lifecycleHeartbeatSchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response("invalid heartbeat payload", { status: 400 });
+    }
+
+    const now = Date.now();
+    await ctx.runMutation(api.agents.updateAgentStatus, {
+      agentId: parsed.data.agentId,
+      status: "busy",
+      lastSeen: now,
+    });
+
+    await ctx.runMutation(api.agents.upsertWorkingMemory, {
+      agentId: parsed.data.agentId,
+      currentTask: parsed.data.workingMemory.currentTask,
+      status: parsed.data.workingMemory.status,
+      progress: parsed.data.workingMemory.progress,
+      nextSteps: parsed.data.workingMemory.nextSteps,
+    });
+
+    return new Response("ok");
+  }
+);
+
+/**
+ * HTTP endpoint for agent lifecycle completion.
+ */
+export const completeAgentLifecycleHttp = httpAction(
+  async (ctx, request): Promise<Response> => {
+    const expectedSecret = process.env.BRIDGE_SECRET;
+    if (expectedSecret) {
+      const authHeader = request.headers.get("authorization") ?? "";
+      if (authHeader !== `Bearer ${expectedSecret}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("invalid json", { status: 400 });
+    }
+
+    const parsed = lifecycleCompleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return new Response("invalid completion payload", { status: 400 });
+    }
+
+    const now = Date.now();
+    await ctx.runMutation(api.agents.updateAgentStatus, {
+      agentId: parsed.data.agentId,
+      status: "online",
+      lastSeen: now,
+      clearSession: true,
+    });
+
+    await ctx.runMutation(internal.events.store, {
+      eventId: `agent_complete:${parsed.data.agentId}:${parsed.data.sessionId}`,
+      eventType: "agent",
+      agentId: parsed.data.agentId,
+      sessionKey: parsed.data.sessionId,
+      timestamp: new Date(now).toISOString(),
+      sequence: now,
+      payload: {
+        status: "completed",
+        sessionId: parsed.data.sessionId,
+        exitCode: parsed.data.exitCode,
+        ...(parsed.data.output !== undefined ? { output: parsed.data.output } : {}),
+      },
+    });
+
+    return new Response("ok");
   }
 );
 

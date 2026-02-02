@@ -275,6 +275,30 @@ describe("agents functions", () => {
     expect(busy?.currentSession).toBe("session_beta");
   });
 
+  it("clears current session on explicit clear", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("agentStatus", {
+      agentId: "agent_clear",
+      status: "busy",
+      lastHeartbeat: Date.now(),
+      lastActivity: Date.now(),
+      currentSession: "session_active",
+    });
+
+    await asHandler(agents.updateAgentStatus)._handler(ctx, {
+      agentId: "agent_clear",
+      status: "online",
+      lastSeen: Date.now() + 1000,
+      clearSession: true,
+    });
+
+    const statuses = await ctx.db.query("agentStatus").collect();
+    const cleared = statuses.find((status) => status.agentId === "agent_clear");
+
+    expect(cleared?.status).toBe("online");
+    expect(cleared?.currentSession).toBeUndefined();
+  });
+
   it("preserves paused or busy status on heartbeat", async () => {
     const ctx = createMockCtx();
     await ctx.db.insert("agentStatus", {
@@ -611,6 +635,161 @@ describe("agents functions", () => {
     expect(validGet.status).toBe(200);
     expect(ctx.runQuery).toHaveBeenCalledTimes(1);
     await validGet.json();
+
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
+
+  it("handles agent lifecycle start http payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const ctx = { runMutation: vi.fn(async () => {}) };
+
+    const unauthorized = await asHttpAction(agents.startAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/start", { method: "POST", body: "{}" })
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const invalidJson = await asHttpAction(agents.startAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/start", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidPayload = await asHttpAction(agents.startAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/start", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{}",
+      })
+    );
+    expect(invalidPayload.status).toBe(400);
+
+    const validPayload = await asHttpAction(agents.startAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/start", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify({
+          agentId: "agent_start",
+          sessionId: "session_start",
+          task: "Ship lifecycle start",
+        }),
+      })
+    );
+
+    expect(validPayload.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(2);
+
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
+
+  it("handles agent lifecycle heartbeat http payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const ctx = { runMutation: vi.fn(async () => {}) };
+
+    const unauthorized = await asHttpAction(agents.heartbeatAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/heartbeat", { method: "POST", body: "{}" })
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const invalidJson = await asHttpAction(agents.heartbeatAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/heartbeat", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidPayload = await asHttpAction(agents.heartbeatAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/heartbeat", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{}",
+      })
+    );
+    expect(invalidPayload.status).toBe(400);
+
+    const validPayload = await asHttpAction(agents.heartbeatAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/heartbeat", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify({
+          agentId: "agent_heartbeat",
+          workingMemory: {
+            currentTask: "Monitor lifecycle",
+            status: "in-progress",
+            progress: "50%",
+            nextSteps: ["Write tests"],
+          },
+        }),
+      })
+    );
+
+    expect(validPayload.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(2);
+
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
+
+  it("handles agent lifecycle completion http payloads", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "secret";
+    const ctx = { runMutation: vi.fn(async () => {}) };
+
+    const unauthorized = await asHttpAction(agents.completeAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/complete", { method: "POST", body: "{}" })
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const invalidJson = await asHttpAction(agents.completeAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/complete", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidPayload = await asHttpAction(agents.completeAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/complete", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "{}",
+      })
+    );
+    expect(invalidPayload.status).toBe(400);
+
+    const validPayload = await asHttpAction(agents.completeAgentLifecycleHttp)(
+      ctx as never,
+      new Request("https://example.test/agent/complete", {
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify({
+          agentId: "agent_done",
+          sessionId: "session_done",
+          exitCode: 0,
+          output: "All done",
+        }),
+      })
+    );
+
+    expect(validPayload.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(2);
 
     process.env.BRIDGE_SECRET = originalSecret;
   });
