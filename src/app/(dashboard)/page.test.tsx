@@ -63,6 +63,7 @@ describe("DashboardPage", () => {
       .mockReturnValueOnce({ error: 0 })
       .mockReturnValueOnce([])
       .mockReturnValueOnce([])
+      .mockReturnValueOnce([])
       .mockReturnValueOnce([]);
 
     render(<DashboardPage />);
