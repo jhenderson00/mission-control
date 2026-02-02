@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Loader2,
   Pause,
   PlayCircle,
   ShieldAlert,
@@ -186,9 +187,9 @@ export function BulkActionBar({
     action: BulkAction,
     agentIds: string[],
     params?: Record<string, unknown>
-  ) => {
+  ): Promise<boolean> => {
     if (agentIds.length === 0) {
-      return;
+      return false;
     }
 
     if (!bulkDispatch) {
@@ -203,7 +204,7 @@ export function BulkActionBar({
         }
         return next;
       });
-      return;
+      return false;
     }
 
     const requestId = createRequestId();
@@ -234,6 +235,7 @@ export function BulkActionBar({
     setLastAction(action);
     setLastParams(params ?? null);
 
+    let ok = false;
     try {
       const payload: {
         agentIds: string[];
@@ -251,6 +253,7 @@ export function BulkActionBar({
       }
 
       const response = await bulkDispatch(payload);
+      ok = response.ok;
       if (response.ok) {
         setStatus({
           tone: "success",
@@ -307,9 +310,11 @@ export function BulkActionBar({
           ])
         )
       );
+      ok = false;
     } finally {
       setPendingAction(null);
     }
+    return ok;
   };
 
   const handlePause = async () => {
@@ -340,9 +345,11 @@ export function BulkActionBar({
     if (!killConfirmed) {
       return;
     }
-    setIsConfirmOpen(false);
-    setKillConfirmation("");
-    await handleBulkDispatch("kill", selectedIds);
+    const ok = await handleBulkDispatch("kill", selectedIds);
+    if (ok) {
+      setIsConfirmOpen(false);
+      setKillConfirmation("");
+    }
   };
 
   const handleRetryFailed = async () => {
@@ -417,18 +424,35 @@ export function BulkActionBar({
     return null;
   }
 
+  const isKillPending = pendingAction === "kill";
+
   return (
     <div className="sticky bottom-4 z-30">
       <Dialog
         open={isConfirmOpen}
         onOpenChange={(open) => {
+          if (isKillPending) {
+            return;
+          }
           setIsConfirmOpen(open);
           if (!open) {
             setKillConfirmation("");
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="max-w-md"
+          onEscapeKeyDown={(event) => {
+            if (isKillPending) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isKillPending) {
+              event.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Confirm kill</DialogTitle>
             <DialogDescription>
@@ -475,8 +499,18 @@ export function BulkActionBar({
               />
             </div>
           </div>
+          {isKillPending && (
+            <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Awaiting bridge confirmation...
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsConfirmOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsConfirmOpen(false)}
+              disabled={isKillPending}
+            >
               Cancel
             </Button>
             <Button
@@ -484,7 +518,14 @@ export function BulkActionBar({
               onClick={handleConfirmKill}
               disabled={!killConfirmed || isBlocked}
             >
-              Kill agents
+              {isKillPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Killing...
+                </>
+              ) : (
+                "Kill agents"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
