@@ -56,15 +56,15 @@ export function AuditLog({ audits, isLoading }: AuditLogProps): React.ReactEleme
                 key={audit._id}
                 className="rounded-lg border border-border/60 bg-background/50 p-3"
               >
-                <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="uppercase tracking-wide text-muted-foreground">
                     {audit.action}
                   </span>
                   <span>{formatRelativeTime(audit.requestedAt, "just now")}</span>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm text-foreground">{audit.command}</p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-foreground break-words">{audit.command}</p>
                     <p className="text-xs text-muted-foreground">
                       Requested by {audit.requestedBy}
                     </p>

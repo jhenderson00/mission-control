@@ -266,7 +266,7 @@ export default function AgentDetailPage({
                   key={event.id ?? event._id}
                   className="rounded-lg border border-border/60 bg-background/50 p-3"
                 >
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span className="uppercase tracking-wide">
                       {formatEventTypeLabel(event.type)}
                     </span>
@@ -315,7 +315,11 @@ export default function AgentDetailPage({
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{decision.outcome}</Badge>
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-11 px-4 sm:h-8 sm:px-3"
+                    >
                       Review <ArrowRight className="ml-2 h-3.5 w-3.5" />
                     </Button>
                   </div>

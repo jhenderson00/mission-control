@@ -54,8 +54,8 @@ export function PageHeader({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
+        <div className="space-y-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight font-display">
               {title}
             </h1>
@@ -79,9 +79,9 @@ export function PageHeader({
             )}
             {titleAccessory}
           </div>
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="text-sm text-muted-foreground break-words">{description}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ConnectionBadge className="shrink-0" />
           <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />

@@ -228,7 +228,7 @@ export default function HelpPage(): ReactElement {
                     asChild
                     variant="outline"
                     size="sm"
-                    className="border-border/60"
+                    className="h-11 border-border/60 px-4 sm:h-8 sm:px-3"
                   >
                     <Link href={link.href}>{link.label}</Link>
                   </Button>
@@ -283,7 +283,7 @@ export default function HelpPage(): ReactElement {
             const Icon = feature.icon;
             return (
               <Card key={feature.title} className="border-border/60 bg-card/40">
-                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary">{feature.badge}</Badge>
