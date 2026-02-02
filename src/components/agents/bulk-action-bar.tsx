@@ -190,7 +190,7 @@ export function BulkActionBar({
 
     updateOptimisticOperations(
       Object.fromEntries(
-        bulkOperations.map((operation) => [
+        bulkOperations.map((operation: { operationId: string; status: string; error?: string }) => [
           operation.operationId,
           {
             status: operation.status as OperationStatus,
