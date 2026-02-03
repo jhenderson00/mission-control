@@ -76,22 +76,22 @@ describe("CYD-133 UAT - Realtime Features", () => {
       />
     );
 
-    expect(screen.getByText("Streaming")).toBeInTheDocument();
+    expect(screen.getAllByText("Streaming").length).toBeGreaterThan(0);
   });
 
   it("renders audit log entries when actions are recorded", () => {
-    const audits: Array<Doc<"auditLog">> = [
+    const audits: Array<Doc<"auditLogs">> = [
       {
-        _id: "audit_1" as Doc<"auditLog">["_id"],
+        _id: "audit_1" as Doc<"auditLogs">["_id"],
         _creationTime: 1,
-        action: "pause",
-        operationId: "op_1",
+        action: "control.dispatch",
+        targetAgentId: "agent_1",
+        operatorId: "operator_1",
+        correlationId: "req_1",
+        timestamp: 100,
         requestId: "req_1",
-        agentId: "agent_1",
         command: "agent.pause",
         outcome: "accepted",
-        requestedBy: "operator_1",
-        requestedAt: 100,
       },
     ];
 
@@ -100,19 +100,19 @@ describe("CYD-133 UAT - Realtime Features", () => {
     expect(screen.getByText("agent.pause")).toBeInTheDocument();
     expect(screen.getByText("Accepted")).toBeInTheDocument();
 
-    const nextAudits: Array<Doc<"auditLog">> = [
+    const nextAudits: Array<Doc<"auditLogs">> = [
       ...audits,
       {
-        _id: "audit_2" as Doc<"auditLog">["_id"],
+        _id: "audit_2" as Doc<"auditLogs">["_id"],
         _creationTime: 2,
-        action: "resume",
-        operationId: "op_2",
+        action: "control.dispatch",
+        targetAgentId: "agent_1",
+        operatorId: "operator_1",
+        correlationId: "req_2",
+        timestamp: 200,
         requestId: "req_2",
-        agentId: "agent_1",
         command: "agent.resume",
         outcome: "accepted",
-        requestedBy: "operator_1",
-        requestedAt: 200,
       },
     ];
 

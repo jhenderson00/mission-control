@@ -149,8 +149,11 @@ async function createMockBridgeServer(
 function createActionCtx() {
   const base = createMockCtx();
   const runMutation = vi.fn(async (_mutation: unknown, args: Record<string, unknown>) => {
-    if ("action" in args) {
-      return asHandler(audit.recordControlAudit)._handler(base, args as never);
+    if ("entries" in args) {
+      return asHandler(audit.recordBulkAction)._handler(base, args as never);
+    }
+    if ("action" in args && "targetAgentId" in args) {
+      return asHandler(audit.recordControlAction)._handler(base, args as never);
     }
     if ("operationIds" in args) {
       return asHandler(controls.updateOperationStatus)._handler(base, args as never);
@@ -357,8 +360,8 @@ describe("OpenClaw integration via mock gateway", () => {
     expect(audits).toHaveLength(2);
     expect(audits.map((audit) => audit.outcome)).toEqual(["accepted", "accepted"]);
 
-    const auditLog = await base.db.query("auditLog").collect();
-    expect(auditLog).toHaveLength(2);
+    const auditLogs = await base.db.query("auditLogs").collect();
+    expect(auditLogs).toHaveLength(2);
   });
 
   it("kills and restarts an agent", async () => {
@@ -446,8 +449,8 @@ describe("OpenClaw integration via mock gateway", () => {
     const audits = await base.db.query("agentControlAudits").collect();
     expect(audits).toHaveLength(4);
 
-    const auditLog = await base.db.query("auditLog").collect();
-    expect(auditLog).toHaveLength(4);
+    const auditLogs = await base.db.query("auditLogs").collect();
+    expect(auditLogs).toHaveLength(4);
   });
 
   it("records errors when gateway is down", async () => {

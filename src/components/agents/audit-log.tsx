@@ -14,17 +14,19 @@ import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type AuditLogProps = {
-  audits: Array<Doc<"auditLog">>;
+  audits: Array<Doc<"auditLogs">>;
   isLoading: boolean;
 };
 
 const outcomeStyles: Record<
-  Doc<"auditLog">["outcome"],
+  Doc<"auditLogs">["outcome"],
   { label: string; className: string }
 > = {
   accepted: { label: "Accepted", className: "text-emerald-300 bg-emerald-400/10" },
   rejected: { label: "Rejected", className: "text-amber-300 bg-amber-400/10" },
   error: { label: "Error", className: "text-red-300 bg-red-400/10" },
+  "timed-out": { label: "Timed out", className: "text-amber-300 bg-amber-400/10" },
+  completed: { label: "Completed", className: "text-emerald-300 bg-emerald-400/10" },
 };
 
 export function AuditLog({ audits, isLoading }: AuditLogProps): React.ReactElement {
@@ -60,13 +62,15 @@ export function AuditLog({ audits, isLoading }: AuditLogProps): React.ReactEleme
                   <span className="uppercase tracking-wide text-muted-foreground">
                     {audit.action}
                   </span>
-                  <span>{formatRelativeTime(audit.requestedAt, "just now")}</span>
+                  <span>{formatRelativeTime(audit.timestamp, "just now")}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm text-foreground break-words">{audit.command}</p>
+                    <p className="text-sm text-foreground break-words">
+                      {audit.command ?? audit.action}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      Requested by {audit.requestedBy}
+                      Requested by {audit.operatorEmail ?? audit.operatorId}
                     </p>
                   </div>
                   <Badge

@@ -6,100 +6,176 @@ import { normalizeAgentIdForLookup, resolveAgentLookup } from "./agentLinking";
 const outcomeValidator = v.union(
   v.literal("accepted"),
   v.literal("rejected"),
-  v.literal("error")
+  v.literal("error"),
+  v.literal("timed-out"),
+  v.literal("completed")
 );
 
-export const recordControlAudit = internalMutation({
-  args: {
-    action: v.string(),
-    operationId: v.string(),
-    requestId: v.string(),
-    bulkId: v.optional(v.string()),
-    agentId: v.string(),
-    command: v.string(),
-    params: v.optional(v.any()),
-    outcome: outcomeValidator,
-    requestedBy: v.string(),
-    requestedAt: v.number(),
-    ackedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    error: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<Id<"auditLog">> => {
-    return await ctx.db.insert("auditLog", {
-      action: args.action,
-      operationId: args.operationId,
-      requestId: args.requestId,
-      bulkId: args.bulkId,
-      agentId: args.agentId,
-      command: args.command,
-      params: args.params,
-      outcome: args.outcome,
-      requestedBy: args.requestedBy,
-      requestedAt: args.requestedAt,
-      ackedAt: args.ackedAt,
-      completedAt: args.completedAt,
-      error: args.error,
+export type AuditOutcome = "accepted" | "rejected" | "error" | "timed-out" | "completed";
+
+const auditEntryValidator = v.object({
+  timestamp: v.optional(v.number()),
+  operatorId: v.string(),
+  operatorEmail: v.optional(v.string()),
+  action: v.string(),
+  targetAgentId: v.string(),
+  parameters: v.optional(v.any()),
+  outcome: outcomeValidator,
+  sourceIp: v.optional(v.string()),
+  sessionId: v.optional(v.string()),
+  correlationId: v.string(),
+  command: v.optional(v.string()),
+  requestId: v.optional(v.string()),
+  operationId: v.optional(v.string()),
+  bulkId: v.optional(v.string()),
+  error: v.optional(v.string()),
+  requestedAt: v.optional(v.number()),
+  ackedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+});
+
+const resolveTimestamp = (entry: {
+  timestamp?: number;
+  ackedAt?: number;
+  requestedAt?: number;
+}): number => entry.timestamp ?? entry.ackedAt ?? entry.requestedAt ?? Date.now();
+
+export const recordControlAction = internalMutation({
+  args: auditEntryValidator,
+  handler: async (ctx, args): Promise<Id<"auditLogs">> => {
+    const timestamp = resolveTimestamp(args);
+    return await ctx.db.insert("auditLogs", {
+      ...args,
+      timestamp,
     });
+  },
+});
+
+export const recordBulkAction = internalMutation({
+  args: {
+    entries: v.array(auditEntryValidator),
+  },
+  handler: async (ctx, args): Promise<Array<Id<"auditLogs">>> => {
+    const ids: Array<Id<"auditLogs">> = [];
+    for (const entry of args.entries) {
+      const timestamp = resolveTimestamp(entry);
+      ids.push(
+        await ctx.db.insert("auditLogs", {
+          ...entry,
+          timestamp,
+        })
+      );
+    }
+    return ids;
   },
 });
 
 export const listByAgent = query({
   args: {
     agentId: v.string(),
+    timeRange: v.optional(
+      v.object({
+        start: v.optional(v.number()),
+        end: v.optional(v.number()),
+      })
+    ),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<Array<Doc<"auditLog">>> => {
+  handler: async (ctx, args): Promise<Array<Doc<"auditLogs">>> => {
     const normalized = normalizeAgentIdForLookup(args.agentId);
     if (!normalized) {
       return [];
     }
     const lookup = await resolveAgentLookup(ctx, normalized);
     const lookupIds = lookup?.lookupIds ?? [normalized];
+    const limit = args.limit ?? 50;
     const results = await Promise.all(
       lookupIds.map((lookupId) =>
         ctx.db
-          .query("auditLog")
-          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .query("auditLogs")
+          .withIndex("by_target_agent", (q) => q.eq("targetAgentId", lookupId))
           .order("desc")
-          .take(args.limit ?? 50)
+          .take(limit)
       )
     );
-    const merged = new Map<string, Doc<"auditLog">>();
+    const merged = new Map<string, Doc<"auditLogs">>();
     for (const record of results.flat()) {
       merged.set(record._id, record);
     }
     const sorted = Array.from(merged.values()).sort(
-      (a, b) => b.requestedAt - a.requestedAt
+      (a, b) => b.timestamp - a.timestamp
     );
-    return sorted.slice(0, args.limit ?? 50);
+    const filtered = args.timeRange
+      ? sorted.filter((record) => {
+          const { start, end } = args.timeRange ?? {};
+          if (typeof start === "number" && record.timestamp < start) {
+            return false;
+          }
+          if (typeof end === "number" && record.timestamp > end) {
+            return false;
+          }
+          return true;
+        })
+      : sorted;
+    return filtered.slice(0, limit);
+  },
+});
+
+export const listByOperator = query({
+  args: {
+    operatorId: v.string(),
+    timeRange: v.optional(
+      v.object({
+        start: v.optional(v.number()),
+        end: v.optional(v.number()),
+      })
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"auditLogs">>> => {
+    const limit = args.limit ?? 50;
+    const records = await ctx.db
+      .query("auditLogs")
+      .withIndex("by_operator", (q) => q.eq("operatorId", args.operatorId))
+      .order("desc")
+      .take(limit);
+
+    const filtered = args.timeRange
+      ? records.filter((record) => {
+          const { start, end } = args.timeRange ?? {};
+          if (typeof start === "number" && record.timestamp < start) {
+            return false;
+          }
+          if (typeof end === "number" && record.timestamp > end) {
+            return false;
+          }
+          return true;
+        })
+      : records;
+
+    return filtered.slice(0, limit);
   },
 });
 
 export const listRecent = query({
   args: {
     limit: v.optional(v.number()),
-    requestedBy: v.optional(v.string()),
-    action: v.optional(v.string()),
-    outcome: v.optional(outcomeValidator),
   },
-  handler: async (ctx, args): Promise<Array<Doc<"auditLog">>> => {
-    const baseQuery = args.requestedBy
-      ? ctx.db
-          .query("auditLog")
-          .withIndex("by_requested_by", (q) =>
-            q.eq("requestedBy", args.requestedBy as string)
-          )
-      : args.action
-        ? ctx.db
-            .query("auditLog")
-            .withIndex("by_action", (q) => q.eq("action", args.action as string))
-        : ctx.db.query("auditLog");
+  handler: async (ctx, args): Promise<Array<Doc<"auditLogs">>> => {
+    return await ctx.db.query("auditLogs").order("desc").take(args.limit ?? 50);
+  },
+});
 
-    const filtered = args.outcome
-      ? baseQuery.filter((q) => q.eq(q.field("outcome"), args.outcome))
-      : baseQuery;
-
-    return await filtered.order("desc").take(args.limit ?? 50);
+export const getByCorrelation = query({
+  args: {
+    correlationId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"auditLogs">>> => {
+    return await ctx.db
+      .query("auditLogs")
+      .withIndex("by_correlation", (q) => q.eq("correlationId", args.correlationId))
+      .order("desc")
+      .take(args.limit ?? 200);
   },
 });

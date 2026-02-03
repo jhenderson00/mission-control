@@ -63,6 +63,8 @@ const dispatchSchema = z.object({
   command: commandSchema,
   params: z.unknown().optional(),
   requestId: z.string().min(1).optional(),
+  sourceIp: z.string().trim().min(1).optional(),
+  sessionId: z.string().trim().min(1).optional(),
 });
 
 const bulkDispatchSchema = z.object({
@@ -70,6 +72,8 @@ const bulkDispatchSchema = z.object({
   command: bulkCommandSchema,
   params: z.unknown().optional(),
   requestId: z.string().min(1).optional(),
+  sourceIp: z.string().trim().min(1).optional(),
+  sessionId: z.string().trim().min(1).optional(),
 });
 
 const pauseParamsSchema = z.object({
@@ -187,6 +191,33 @@ function parseCommandParams(
       >;
     }
   }
+}
+
+const REDACTED = "[redacted]";
+
+function sanitizeAuditParams(
+  command: ControlCommand,
+  params: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!params) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, unknown> = { ...params };
+
+  if (command === "agent.redirect" && "taskPayload" in sanitized) {
+    sanitized.taskPayload = REDACTED;
+    if (typeof sanitized.taskId === "string") {
+      sanitized.taskPayloadRef = sanitized.taskId;
+    }
+  }
+
+  if ("sessionKey" in sanitized && typeof sanitized.sessionKey === "string") {
+    const sessionKey = sanitized.sessionKey as string;
+    sanitized.sessionKey = sessionKey.length > 6 ? `${sessionKey.slice(0, 4)}...` : REDACTED;
+  }
+
+  return sanitized;
 }
 
 function resolveBridgeConfig(): { url: string; secret: string } {
@@ -364,6 +395,8 @@ export const dispatch = action({
     command: v.string(),
     params: v.optional(v.any()),
     requestId: v.optional(v.string()),
+    sourceIp: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<DispatchResult> => {
     const parsed = dispatchSchema.safeParse(args);
@@ -380,7 +413,12 @@ export const dispatch = action({
     const operationId = requestId;
     const command = parsed.data.command;
     const params = parseCommandParams(command, parsed.data.params);
+    const sanitizedParams = sanitizeAuditParams(command, params);
     const requestedBy = identity.subject;
+    const operatorEmail =
+      identity.email ?? identity.preferredUsername ?? identity.name ?? undefined;
+    const sourceIp = parsed.data.sourceIp;
+    const sessionId = parsed.data.sessionId ?? identity.tokenIdentifier;
     const requestedAt = Date.now();
 
     const operation = await ctx.runMutation(internal.controls.createOperation, {
@@ -434,23 +472,28 @@ export const dispatch = action({
         requestId,
         agentId: parsed.data.agentId,
         command,
-        params,
+        params: sanitizedParams,
         outcome: "error",
         requestedBy,
         requestedAt,
         error: message,
       });
-      await ctx.runMutation(internal.audit.recordControlAudit, {
+      await ctx.runMutation(internal.audit.recordControlAction, {
         action: "control.dispatch",
-        operationId,
-        requestId,
-        agentId: parsed.data.agentId,
-        command,
-        params,
+        targetAgentId: parsed.data.agentId,
+        parameters: sanitizedParams,
         outcome: "error",
-        requestedBy,
-        requestedAt,
+        operatorId: requestedBy,
+        operatorEmail,
+        sourceIp,
+        sessionId,
+        correlationId: requestId,
+        command,
+        requestId,
+        operationId,
         error: message,
+        requestedAt,
+        timestamp: Date.now(),
       });
       return {
         ok: false,
@@ -474,23 +517,28 @@ export const dispatch = action({
         requestId,
         agentId: parsed.data.agentId,
         command,
-        params,
+        params: sanitizedParams,
         outcome: "accepted",
         requestedBy,
         requestedAt,
         ackedAt,
       });
-      await ctx.runMutation(internal.audit.recordControlAudit, {
+      await ctx.runMutation(internal.audit.recordControlAction, {
         action: "control.dispatch",
-        operationId,
-        requestId,
-        agentId: parsed.data.agentId,
-        command,
-        params,
+        targetAgentId: parsed.data.agentId,
+        parameters: sanitizedParams,
         outcome: "accepted",
-        requestedBy,
+        operatorId: requestedBy,
+        operatorEmail,
+        sourceIp,
+        sessionId,
+        correlationId: requestId,
+        command,
+        requestId,
+        operationId,
         requestedAt,
         ackedAt,
+        timestamp: ackedAt,
       });
       return {
         ok: true,
@@ -513,25 +561,30 @@ export const dispatch = action({
       requestId,
       agentId: parsed.data.agentId,
       command,
-      params,
+      params: sanitizedParams,
       outcome: bridgeAck.status === "rejected" ? "rejected" : "error",
       requestedBy,
       requestedAt,
       ackedAt,
       error: errorMessage,
     });
-    await ctx.runMutation(internal.audit.recordControlAudit, {
+    await ctx.runMutation(internal.audit.recordControlAction, {
       action: "control.dispatch",
-      operationId,
-      requestId,
-      agentId: parsed.data.agentId,
-      command,
-      params,
+      targetAgentId: parsed.data.agentId,
+      parameters: sanitizedParams,
       outcome: bridgeAck.status === "rejected" ? "rejected" : "error",
-      requestedBy,
+      operatorId: requestedBy,
+      operatorEmail,
+      sourceIp,
+      sessionId,
+      correlationId: requestId,
+      command,
+      requestId,
+      operationId,
       requestedAt,
       ackedAt,
       error: errorMessage,
+      timestamp: ackedAt,
     });
 
     return {
@@ -551,6 +604,8 @@ export const bulkDispatch = action({
     command: v.string(),
     params: v.optional(v.any()),
     requestId: v.optional(v.string()),
+    sourceIp: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<BulkDispatchResult> => {
     const parsed = bulkDispatchSchema.safeParse(args);
@@ -567,7 +622,12 @@ export const bulkDispatch = action({
     const bulkId = requestId;
     const command = parsed.data.command as ControlCommand;
     const params = parseCommandParams(command, parsed.data.params);
+    const sanitizedParams = sanitizeAuditParams(command, params);
     const requestedBy = identity.subject;
+    const operatorEmail =
+      identity.email ?? identity.preferredUsername ?? identity.name ?? undefined;
+    const sourceIp = parsed.data.sourceIp;
+    const sessionId = parsed.data.sessionId ?? identity.tokenIdentifier;
     const requestedAt = Date.now();
 
     const operations = await Promise.all(
@@ -656,20 +716,7 @@ export const bulkDispatch = action({
             bulkId,
             agentId: operation.agentId,
             command,
-            params,
-            outcome: "error",
-            requestedBy,
-            requestedAt,
-            error: message,
-          });
-          await ctx.runMutation(internal.audit.recordControlAudit, {
-            action: "control.bulkDispatch",
-            operationId: operation.operationId,
-            requestId,
-            bulkId,
-            agentId: operation.agentId,
-            command,
-            params,
+            params: sanitizedParams,
             outcome: "error",
             requestedBy,
             requestedAt,
@@ -677,6 +724,26 @@ export const bulkDispatch = action({
           });
         })
       );
+      await ctx.runMutation(internal.audit.recordBulkAction, {
+        entries: newOperations.map((operation) => ({
+          action: "control.bulkDispatch",
+          targetAgentId: operation.agentId,
+          parameters: sanitizedParams,
+          outcome: "error" as const,
+          operatorId: requestedBy,
+          operatorEmail,
+          sourceIp,
+          sessionId,
+          correlationId: bulkId,
+          command,
+          requestId,
+          operationId: operation.operationId,
+          bulkId,
+          error: message,
+          requestedAt,
+          timestamp: Date.now(),
+        })),
+      });
       return {
         ok: false,
         requestId,
@@ -724,21 +791,7 @@ export const bulkDispatch = action({
           bulkId,
           agentId: operation.agentId,
           command,
-          params,
-          outcome,
-          requestedBy,
-          requestedAt,
-          ackedAt,
-          error,
-        });
-        await ctx.runMutation(internal.audit.recordControlAudit, {
-          action: "control.bulkDispatch",
-          operationId: operation.operationId,
-          requestId,
-          bulkId,
-          agentId: operation.agentId,
-          command,
-          params,
+          params: sanitizedParams,
           outcome,
           requestedBy,
           requestedAt,
@@ -747,6 +800,36 @@ export const bulkDispatch = action({
         });
       })
     );
+    await ctx.runMutation(internal.audit.recordBulkAction, {
+      entries: newOperations.map((operation) => ({
+        action: "control.bulkDispatch",
+        targetAgentId: operation.agentId,
+        parameters: sanitizedParams,
+        outcome: (
+          bridgeAck.status === "accepted"
+            ? "accepted"
+            : bridgeAck.status === "rejected"
+              ? "rejected"
+              : "error"
+        ) as "accepted" | "rejected" | "error",
+        operatorId: requestedBy,
+        operatorEmail,
+        sourceIp,
+        sessionId,
+        correlationId: bulkId,
+        command,
+        requestId,
+        operationId: operation.operationId,
+        bulkId,
+        requestedAt,
+        ackedAt,
+        error:
+          bridgeAck.status === "accepted"
+            ? undefined
+            : bridgeAck.error ?? "Bridge rejected request",
+        timestamp: ackedAt,
+      })),
+    });
 
     return {
       ok: bridgeAck.status === "accepted",

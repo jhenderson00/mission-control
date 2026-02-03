@@ -40,7 +40,9 @@ export const api = {
   },
   audit: {
     listByAgent: makeFunctionReference<"query">("audit:listByAgent"),
+    listByOperator: makeFunctionReference<"query">("audit:listByOperator"),
     listRecent: makeFunctionReference<"query">("audit:listRecent"),
+    getByCorrelation: makeFunctionReference<"query">("audit:getByCorrelation"),
   },
   conversations: {
     listBySession: makeFunctionReference<"query">("conversations:listBySession"),
