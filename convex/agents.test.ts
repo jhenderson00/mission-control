@@ -222,7 +222,12 @@ describe("agents functions", () => {
 
     const statuses = await ctx.db.query("agentStatus").collect();
     expect(statuses).toHaveLength(1);
-    expect(statuses[0].agentId).toBe("agent_alpha");
+    const agentRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_alpha"))
+      .first();
+    expect(agentRecord).toBeTruthy();
+    expect(statuses[0].agentId).toBe(agentRecord?._id);
     expect(statuses[0].status).toBe("online");
   });
 
@@ -240,7 +245,12 @@ describe("agents functions", () => {
 
     const statuses = await ctx.db.query("agentStatus").collect();
     expect(statuses).toHaveLength(1);
-    expect(statuses[0].agentId).toBe("agent_heartbeat");
+    const agentRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_heartbeat"))
+      .first();
+    expect(agentRecord).toBeTruthy();
+    expect(statuses[0].agentId).toBe(agentRecord?._id);
   });
 
   it("updates presence status and clears sessions on offline", async () => {
@@ -266,8 +276,16 @@ describe("agents functions", () => {
     });
 
     const statuses = await ctx.db.query("agentStatus").collect();
-    const online = statuses.find((status) => status.agentId === "agent_online");
-    const busy = statuses.find((status) => status.agentId === "agent_busy");
+    const onlineRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_online"))
+      .first();
+    const busyRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_busy"))
+      .first();
+    const online = statuses.find((status) => status.agentId === onlineRecord?._id);
+    const busy = statuses.find((status) => status.agentId === busyRecord?._id);
 
     expect(online?.status).toBe("offline");
     expect(online?.currentSession).toBeUndefined();
@@ -293,7 +311,11 @@ describe("agents functions", () => {
     });
 
     const statuses = await ctx.db.query("agentStatus").collect();
-    const cleared = statuses.find((status) => status.agentId === "agent_clear");
+    const agentRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_clear"))
+      .first();
+    const cleared = statuses.find((status) => status.agentId === agentRecord?._id);
 
     expect(cleared?.status).toBe("online");
     expect(cleared?.currentSession).toBeUndefined();
@@ -335,8 +357,16 @@ describe("agents functions", () => {
     });
 
     const statuses = await ctx.db.query("agentStatus").collect();
-    const paused = statuses.find((status) => status.agentId === "agent_paused");
-    const busy = statuses.find((status) => status.agentId === "agent_busy");
+    const pausedRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_paused"))
+      .first();
+    const busyRecord = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_busy"))
+      .first();
+    const paused = statuses.find((status) => status.agentId === pausedRecord?._id);
+    const busy = statuses.find((status) => status.agentId === busyRecord?._id);
 
     expect(paused?.status).toBe("paused");
     expect(busy?.status).toBe("busy");

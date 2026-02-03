@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { AgentStatusGrid } from "@/components/agents/agent-status-grid";
 import type { AgentSummary } from "@/lib/agent-types";
 
@@ -13,9 +13,11 @@ vi.mock("@/lib/realtime", () => ({
 
 vi.mock("convex/react", () => ({
   useAction: vi.fn(),
+  useQuery: vi.fn(),
 }));
 
 const useActionMock = vi.mocked(useAction);
+const useQueryMock = vi.mocked(useQuery);
 
 const baseAgent: AgentSummary = {
   _id: "agent_1",
@@ -37,6 +39,7 @@ describe("CYD-133 UAT - Agent Updates", () => {
       isLoading: false,
     });
     useActionMock.mockReturnValue(vi.fn());
+    useQueryMock.mockReset();
   });
 
   it("returns to active after resume updates", () => {

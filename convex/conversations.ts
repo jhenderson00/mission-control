@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { z } from "zod";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, query } from "./_generated/server";
-import { normalizeAgentIdForLookup } from "./agentLinking";
+import { normalizeAgentIdForLookup, resolveOrCreateAgentRecord } from "./agentLinking";
 
 const eventValidator = v.object({
   eventId: v.string(),
@@ -129,10 +129,12 @@ export const processAgentEvent = internalMutation({
       return null;
     }
 
-    const agentId = normalizeAgentIdForLookup(event.agentId);
-    if (!agentId) {
+    const normalizedAgentId = normalizeAgentIdForLookup(event.agentId);
+    if (!normalizedAgentId) {
       return null;
     }
+    const agentRecord = await resolveOrCreateAgentRecord(ctx, normalizedAgentId);
+    const agentId = agentRecord?._id ?? normalizedAgentId;
 
     let content: string | null = null;
     if (delta.type === "text") {
@@ -189,10 +191,14 @@ export const processChatEvent = internalMutation({
 
     for (const [index, message] of messages.entries()) {
       const sessionKey = message.sessionKey ?? event.sessionKey;
-      const agentId = normalizeAgentIdForLookup(message.agentId ?? event.agentId);
-      if (!sessionKey || !agentId) {
+      const normalizedAgentId = normalizeAgentIdForLookup(
+        message.agentId ?? event.agentId
+      );
+      if (!sessionKey || !normalizedAgentId) {
         continue;
       }
+      const agentRecord = await resolveOrCreateAgentRecord(ctx, normalizedAgentId);
+      const agentId = agentRecord?._id ?? normalizedAgentId;
 
       const sequence = message.sequence ?? baseSequence + index;
       const timestamp = normalizeTimestamp(message.timestamp, eventTimestamp);

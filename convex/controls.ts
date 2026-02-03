@@ -16,7 +16,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalMutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { normalizeAgentIdForLookup, resolveConvexAgentId } from "./agentLinking";
+import { normalizeAgentIdForLookup, resolveAgentLookup } from "./agentLinking";
 
 type OperationStatus = "queued" | "sent" | "acked" | "failed" | "timed-out";
 
@@ -125,16 +125,16 @@ const bridgeAckSchema = z
   })
   .passthrough();
 
-async function resolveAgentIdForQuery(
+async function resolveAgentLookupIds(
   ctx: QueryCtx,
   agentId: string
-): Promise<string | null> {
+): Promise<string[]> {
   const normalized = normalizeAgentIdForLookup(agentId);
   if (!normalized) {
-    return null;
+    return [];
   }
-  const resolved = await resolveConvexAgentId(ctx, normalized);
-  return resolved ?? normalized;
+  const lookup = await resolveAgentLookup(ctx, normalized);
+  return lookup?.lookupIds ?? [normalized];
 }
 
 function parseCommandParams(
@@ -781,22 +781,34 @@ const listActiveByAgentHandler = async (
   ctx: QueryCtx,
   args: { agentId: string; limit?: number }
 ): Promise<Array<Doc<"agentControlOperations">>> => {
-  const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
-  if (!resolvedAgentId) {
+  const lookupIds = await resolveAgentLookupIds(ctx, args.agentId);
+  if (lookupIds.length === 0) {
     return [];
   }
-  return await ctx.db
-    .query("agentControlOperations")
-    .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
-    .filter((q) =>
-      q.or(
-        q.eq(q.field("status"), activeStatuses[0]),
-        q.eq(q.field("status"), activeStatuses[1]),
-        q.eq(q.field("status"), activeStatuses[2])
-      )
+  const results = await Promise.all(
+    lookupIds.map((lookupId) =>
+      ctx.db
+        .query("agentControlOperations")
+        .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("status"), activeStatuses[0]),
+            q.eq(q.field("status"), activeStatuses[1]),
+            q.eq(q.field("status"), activeStatuses[2])
+          )
+        )
+        .order("desc")
+        .take(args.limit ?? 50)
     )
-    .order("desc")
-    .take(args.limit ?? 50);
+  );
+  const merged = new Map<string, Doc<"agentControlOperations">>();
+  for (const operation of results.flat()) {
+    merged.set(operation._id, operation);
+  }
+  const sorted = Array.from(merged.values()).sort(
+    (a, b) => b.requestedAt - a.requestedAt
+  );
+  return sorted.slice(0, args.limit ?? 50);
 };
 
 export const activeByAgent = query({
@@ -815,17 +827,40 @@ export const operationsByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
-    const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
-    if (!resolvedAgentId) {
+    const lookupIds = await resolveAgentLookupIds(ctx, args.agentId);
+    if (lookupIds.length === 0) {
       return [];
     }
-    return await ctx.db
-      .query("agentControlOperations")
-      .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
-      .order("desc")
-      .take(args.limit ?? 50);
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("agentControlOperations")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .order("desc")
+          .take(args.limit ?? 50)
+      )
+    );
+    const merged = new Map<string, Doc<"agentControlOperations">>();
+    for (const operation of results.flat()) {
+      merged.set(operation._id, operation);
+    }
+    const sorted = Array.from(merged.values()).sort(
+      (a, b) => b.requestedAt - a.requestedAt
+    );
+    return sorted.slice(0, args.limit ?? 50);
   },
 });
+
+const listRecentByOperatorHandler = async (
+  ctx: QueryCtx,
+  args: { requestedBy: string; limit?: number }
+): Promise<Array<Doc<"agentControlOperations">>> => {
+  return await ctx.db
+    .query("agentControlOperations")
+    .withIndex("by_requested_by", (q) => q.eq("requestedBy", args.requestedBy))
+    .order("desc")
+    .take(args.limit ?? 50);
+};
 
 export const listRecentByOperator = query({
   args: {
@@ -833,13 +868,30 @@ export const listRecentByOperator = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
-    return await ctx.db
-      .query("agentControlOperations")
-      .withIndex("by_requested_by", (q) => q.eq("requestedBy", args.requestedBy))
-      .order("desc")
-      .take(args.limit ?? 50);
+    return await listRecentByOperatorHandler(ctx, args);
   },
 });
+
+export const recentByOperator = query({
+  args: {
+    requestedBy: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await listRecentByOperatorHandler(ctx, args);
+  },
+});
+
+const listByBulkIdHandler = async (
+  ctx: QueryCtx,
+  args: { bulkId: string; limit?: number }
+): Promise<Array<Doc<"agentControlOperations">>> => {
+  return await ctx.db
+    .query("agentControlOperations")
+    .withIndex("by_bulk", (q) => q.eq("bulkId", args.bulkId))
+    .order("desc")
+    .take(args.limit ?? 100);
+};
 
 export const listByBulkId = query({
   args: {
@@ -847,11 +899,17 @@ export const listByBulkId = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
-    return await ctx.db
-      .query("agentControlOperations")
-      .withIndex("by_bulk", (q) => q.eq("bulkId", args.bulkId))
-      .order("desc")
-      .take(args.limit ?? 100);
+    return await listByBulkIdHandler(ctx, args);
+  },
+});
+
+export const bulkById = query({
+  args: {
+    bulkId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<Doc<"agentControlOperations">>> => {
+    return await listByBulkIdHandler(ctx, args);
   },
 });
 
@@ -867,15 +925,27 @@ export const listAuditsByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
-    const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
-    if (!resolvedAgentId) {
+    const lookupIds = await resolveAgentLookupIds(ctx, args.agentId);
+    if (lookupIds.length === 0) {
       return [];
     }
-    return await ctx.db
-      .query("agentControlAudits")
-      .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
-      .order("desc")
-      .take(args.limit ?? 50);
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("agentControlAudits")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .order("desc")
+          .take(args.limit ?? 50)
+      )
+    );
+    const merged = new Map<string, Doc<"agentControlAudits">>();
+    for (const audit of results.flat()) {
+      merged.set(audit._id, audit);
+    }
+    const sorted = Array.from(merged.values()).sort(
+      (a, b) => b.requestedAt - a.requestedAt
+    );
+    return sorted.slice(0, args.limit ?? 50);
   },
 });
 
@@ -885,15 +955,27 @@ export const auditByAgent = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Array<Doc<"agentControlAudits">>> => {
-    const resolvedAgentId = await resolveAgentIdForQuery(ctx, args.agentId);
-    if (!resolvedAgentId) {
+    const lookupIds = await resolveAgentLookupIds(ctx, args.agentId);
+    if (lookupIds.length === 0) {
       return [];
     }
-    return await ctx.db
-      .query("agentControlAudits")
-      .withIndex("by_agent", (q) => q.eq("agentId", resolvedAgentId))
-      .order("desc")
-      .take(args.limit ?? 50);
+    const results = await Promise.all(
+      lookupIds.map((lookupId) =>
+        ctx.db
+          .query("agentControlAudits")
+          .withIndex("by_agent", (q) => q.eq("agentId", lookupId))
+          .order("desc")
+          .take(args.limit ?? 50)
+      )
+    );
+    const merged = new Map<string, Doc<"agentControlAudits">>();
+    for (const audit of results.flat()) {
+      merged.set(audit._id, audit);
+    }
+    const sorted = Array.from(merged.values()).sort(
+      (a, b) => b.requestedAt - a.requestedAt
+    );
+    return sorted.slice(0, args.limit ?? 50);
   },
 });
 

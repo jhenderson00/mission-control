@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -10,7 +10,13 @@ import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
 import { ControlPanel } from "@/components/agents/control-panel";
 import { PendingOperations } from "@/components/agents/pending-operations";
 import { AuditLog } from "@/components/agents/audit-log";
-import { useMergedOperations } from "@/lib/controls/optimistic-operations";
+import {
+  createRequestId,
+  useMergedOperations,
+  useOptimisticOperationsStore,
+  type OperationEntry,
+} from "@/lib/controls/optimistic-operations";
+import type { OperationStatus } from "@/lib/controls/operation-status";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -72,6 +78,8 @@ const statusStyles: Record<string, string> = {
   failed: "bg-red-500/15 text-red-300",
 };
 
+const hasControlsApi = typeof api.controls?.dispatch !== "undefined";
+
 function formatEventTypeLabel(eventType: string): string {
   return eventType.replace(/[_\.]/g, " ");
 }
@@ -100,6 +108,13 @@ export default function AgentDetailPage({
   const { id } = use(params);
   const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const agentId = id as Id<"agents">;
+  const dispatch = hasControlsApi ? useAction(api.controls.dispatch) : null;
+  const addOptimisticOperation = useOptimisticOperationsStore(
+    (state) => state.addOperation
+  );
+  const updateOptimisticOperation = useOptimisticOperationsStore(
+    (state) => state.updateOperation
+  );
 
   const agent = useQuery(api.agents.get, { id: agentId });
   const events = useQuery(api.events.listByAgent, { agentId });
@@ -145,6 +160,51 @@ export default function AgentDetailPage({
 
   const isLoadingAudits = hasConvex && audits === undefined;
   const auditList = hasConvex ? audits ?? [] : [];
+
+  const handleRetryOperation = async (operation: OperationEntry) => {
+    if (!dispatch || !hasConvex) {
+      return;
+    }
+
+    const requestId = createRequestId();
+    const requestedAt = Date.now();
+    const params =
+      typeof operation.params !== "undefined"
+        ? (operation.params as Record<string, unknown>)
+        : undefined;
+
+    addOptimisticOperation({
+      operationId: requestId,
+      agentId: operation.agentId,
+      command: operation.command,
+      params,
+      status: "queued",
+      requestedAt,
+      requestedBy: "you",
+      isOptimistic: true,
+    });
+    updateOptimisticOperation(requestId, { status: "sent" });
+
+    try {
+      const response = await dispatch({
+        agentId: operation.agentId,
+        command: operation.command,
+        params,
+        requestId,
+      });
+
+      updateOptimisticOperation(requestId, {
+        status: response.status as OperationStatus,
+        error: response.ok ? undefined : response.error,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Command failed";
+      updateOptimisticOperation(requestId, {
+        status: "failed",
+        error: message,
+      });
+    }
+  };
 
   if (isLoadingAgent) {
     return (
@@ -241,6 +301,7 @@ export default function AgentDetailPage({
           <PendingOperations
             operations={operationList}
             isLoading={isOperationsLoading}
+            onRetry={handleRetryOperation}
           />
         </div>
 

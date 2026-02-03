@@ -35,6 +35,7 @@ export const api = {
   events: {
     listByAgent: makeFunctionReference<"query">("events:listByAgent"),
     listRecent: makeFunctionReference<"query">("events:listRecent"),
+    listDiagnostics: makeFunctionReference<"query">("events:listDiagnostics"),
     countsByType: makeFunctionReference<"query">("events:countsByType"),
   },
   audit: {
@@ -58,9 +59,15 @@ export const api = {
     bulkDispatch: makeFunctionReference<"action">("controls:bulkDispatch"),
     activeByAgent: makeFunctionReference<"query">("controls:activeByAgent"),
     operationsByAgent: makeFunctionReference<"query">("controls:operationsByAgent"),
+    listRecentByOperator: makeFunctionReference<"query">("controls:listRecentByOperator"),
     recentByOperator: makeFunctionReference<"query">("controls:recentByOperator"),
+    listByBulkId: makeFunctionReference<"query">("controls:listByBulkId"),
+    bulkById: makeFunctionReference<"query">("controls:bulkById"),
     auditByAgent: makeFunctionReference<"query">("controls:auditByAgent"),
     auditByOperator: makeFunctionReference<"query">("controls:auditByOperator"),
+  },
+  contextGraph: {
+    getGraph: makeFunctionReference<"query">("contextGraph:getGraph"),
   },
 };
 

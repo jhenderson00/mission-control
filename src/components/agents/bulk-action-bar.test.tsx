@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { BulkActionBar } from "@/components/agents/bulk-action-bar";
 import type { AgentSummary } from "@/lib/agent-types";
 
 vi.mock("convex/react", () => ({
   useAction: vi.fn(),
+  useQuery: vi.fn(),
 }));
 
 const useActionMock = vi.mocked(useAction);
+const useQueryMock = vi.mocked(useQuery);
 
 const agents: AgentSummary[] = [
   {
@@ -35,6 +37,7 @@ const agents: AgentSummary[] = [
 describe("BulkActionBar", () => {
   beforeEach(() => {
     useActionMock.mockReset();
+    useQueryMock.mockReset();
   });
 
   afterEach(() => {
