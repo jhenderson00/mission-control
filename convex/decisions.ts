@@ -115,8 +115,28 @@ export const record = mutation({
   args: {
     agentId: v.id("agents"),
     taskId: v.optional(v.id("tasks")),
+    sessionKey: v.optional(v.string()),
+    runId: v.optional(v.string()),
+    sourceEventId: v.optional(v.string()),
     decision: v.string(),
     reasoning: v.string(),
+    decisionType: v.optional(
+      v.union(
+        v.literal("planning"),
+        v.literal("execution"),
+        v.literal("review"),
+        v.literal("escalation")
+      )
+    ),
+    importance: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+        v.literal("critical")
+      )
+    ),
+    tags: v.optional(v.array(v.string())),
     confidence: v.optional(v.number()),
     alternativesConsidered: v.optional(v.array(v.object({
       option: v.string(),
