@@ -17,6 +17,7 @@ const eventValidator = v.object({
   agentId: v.string(),
   sessionKey: v.optional(v.string()),
   timestamp: v.string(),
+  receivedAt: v.optional(v.number()),
   sequence: v.number(),
   payload: v.any(),
   sourceEventId: v.optional(v.string()),
@@ -56,6 +57,7 @@ type NormalizedEvent = {
   _id: string;
   agentId: string;
   createdAt: number;
+  receivedAt: number;
   type: string;
   content: string;
 };
@@ -381,6 +383,7 @@ function normalizeEvent(event: {
     _id: event._id,
     agentId: event.agentId,
     createdAt,
+    receivedAt: event.receivedAt,
     type: event.eventType,
     content: summarizePayload(event.eventType, event.payload),
   };
@@ -542,13 +545,24 @@ export const ingest = httpAction(async (ctx, request): Promise<Response> => {
   const events = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
 
   for (const event of events) {
-    await ctx.runMutation(internal.events.store, event);
+    const receivedAt = Date.now();
+    await ctx.runMutation(internal.events.store, { ...event, receivedAt });
     switch (event.eventType) {
       case "agent":
         await ctx.runMutation(internal.conversations.processAgentEvent, event);
+        await ctx.runMutation(internal.agents.updateActivityFromEvent, {
+          agentId: event.agentId,
+          sessionKey: event.sessionKey,
+          receivedAt,
+        });
         break;
       case "chat":
         await ctx.runMutation(internal.conversations.processChatEvent, event);
+        await ctx.runMutation(internal.agents.updateActivityFromEvent, {
+          agentId: event.agentId,
+          sessionKey: event.sessionKey,
+          receivedAt,
+        });
         break;
       case "presence":
       case "heartbeat":
@@ -583,10 +597,11 @@ export const store = internalMutation({
       : null;
     const canonicalAgentId = agentRecord?._id ?? normalizedAgentId ?? args.agentId;
 
+    const receivedAt = args.receivedAt ?? Date.now();
     return await ctx.db.insert("events", {
       ...args,
       agentId: canonicalAgentId,
-      receivedAt: Date.now(),
+      receivedAt,
     });
   },
 });

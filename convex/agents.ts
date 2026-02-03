@@ -26,6 +26,12 @@ const eventValidator = v.object({
   payload: v.any(),
 });
 
+const activityEventValidator = v.object({
+  agentId: v.string(),
+  sessionKey: v.optional(v.string()),
+  receivedAt: v.number(),
+});
+
 const agentStatusValidator = v.union(
   v.literal("online"),
   v.literal("offline"),
@@ -1355,6 +1361,53 @@ export const updateStatusFromEvent = internalMutation({
         }
       );
     }
+  },
+});
+
+/**
+ * Update agent activity based on chat/agent events.
+ */
+export const updateActivityFromEvent = internalMutation({
+  args: activityEventValidator,
+  handler: async (ctx, event): Promise<void> => {
+    const normalizedEventAgentId = normalizeAgentIdForLookup(event.agentId);
+    if (!normalizedEventAgentId) {
+      return;
+    }
+
+    const agentRecord = await resolveOrCreateAgentRecord(ctx, normalizedEventAgentId);
+    const canonicalAgentId = agentRecord?._id ?? normalizedEventAgentId;
+    const lookupIds = uniqueInOrder([
+      canonicalAgentId,
+      agentRecord?.bridgeAgentId,
+      normalizedEventAgentId,
+    ]);
+    const current = await findStatusRecord(ctx, lookupIds);
+
+    if (current) {
+      const nextLastActivity = Math.max(current.lastActivity ?? 0, event.receivedAt);
+      const nextSession = current.currentSession ?? event.sessionKey;
+      const shouldUpdateSession =
+        Boolean(nextSession) && nextSession !== current.currentSession;
+
+      if (nextLastActivity !== current.lastActivity || shouldUpdateSession) {
+        await ctx.db.patch(current._id, {
+          agentId: canonicalAgentId,
+          lastActivity: nextLastActivity,
+          ...(shouldUpdateSession ? { currentSession: nextSession } : {}),
+        });
+      }
+
+      return;
+    }
+
+    await ctx.db.insert("agentStatus", {
+      agentId: canonicalAgentId,
+      status: "online",
+      lastHeartbeat: event.receivedAt,
+      lastActivity: event.receivedAt,
+      currentSession: event.sessionKey,
+    });
   },
 });
 

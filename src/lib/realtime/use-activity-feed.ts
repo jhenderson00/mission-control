@@ -10,6 +10,7 @@ export type ActivityEvent = {
   _id: string;
   agentId: string;
   createdAt: number;
+  receivedAt: number;
   type: string;
   content: string;
 };
@@ -31,7 +32,7 @@ export function useActivityFeed(options: UseActivityFeedOptions = {}) {
     key: `activity:${options.type ?? "all"}`,
     items: data === undefined ? undefined : (data as ActivityEvent[]),
     getId: (event) => event._id,
-    getTimestamp: (event) => event.createdAt,
+    getTimestamp: (event) => Math.max(event.createdAt, event.receivedAt),
   });
 
   const events = useMemo<ActivityEvent[]>(

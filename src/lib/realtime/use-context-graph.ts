@@ -50,11 +50,13 @@ export function useContextGraph(options: UseContextGraphOptions = {}) {
     limit: options.limit,
   }) as ContextGraphData | undefined;
 
+  const staleAfterMs = 30 * 60 * 1000;
   const sync = useStateSync<ContextGraphNode>({
     key: `context-graph:${options.agentId ?? "all"}:${options.decisionType ?? "all"}:${options.timeRangeMs ?? "all"}`,
     items: data?.nodes,
     getId: (node) => node.id,
     getTimestamp: (node) => node.createdAt,
+    staleAfterMs,
   });
 
   const nodes = useMemo<ContextGraphNode[]>(() => sync.items, [sync.items]);
