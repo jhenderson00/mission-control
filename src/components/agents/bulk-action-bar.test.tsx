@@ -162,8 +162,8 @@ describe("BulkActionBar", () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(
-      screen.getByPlaceholderText("Type KILL Alpha or CONFIRM"),
-      "KILL Alpha"
+      screen.getByPlaceholderText("Type CONFIRM to proceed"),
+      "CONFIRM"
     );
 
     expect(confirmButton).toBeEnabled();

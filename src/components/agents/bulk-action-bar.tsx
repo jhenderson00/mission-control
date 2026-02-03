@@ -143,25 +143,10 @@ export function BulkActionBar({
   );
 
   const isBlocked = pendingAction !== null || !bulkDispatch;
-  const bulkKillCopy = useMemo(() => {
-    if (selectedAgents.length === 1) {
-      const name = selectedAgents[0]?.name?.trim() || "this agent";
-      const phrase = `KILL ${name}`;
-      return { phrase, hint: `${phrase} or CONFIRM` };
-    }
-    const phrase = `KILL ${selectedAgents.length} AGENTS`;
-    return { phrase, hint: `${phrase} or CONFIRM` };
-  }, [selectedAgents]);
-  const killConfirmed = useMemo(() => {
-    const normalized = killConfirmation.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-    if (normalized === "confirm") {
-      return true;
-    }
-    return normalized === bulkKillCopy.phrase.toLowerCase();
-  }, [bulkKillCopy.phrase, killConfirmation]);
+  const killConfirmed = useMemo(
+    () => killConfirmation.trim().toUpperCase() === "CONFIRM",
+    [killConfirmation]
+  );
 
   const setPendingForAgents = (agentIds: string[]) => {
     setResults((prev) => {
@@ -477,7 +462,7 @@ export function BulkActionBar({
         }}
       >
         <DialogContent
-          className="max-w-md"
+          className="max-w-md border-destructive/50"
           onEscapeKeyDown={(event) => {
             if (isKillPending) {
               event.preventDefault();
@@ -490,7 +475,10 @@ export function BulkActionBar({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Confirm kill</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="h-4 w-4" />
+              Confirm kill
+            </DialogTitle>
             <DialogDescription>
               This will terminate {selectedAgents.length} agent session
               {selectedAgents.length === 1 ? "" : "s"} and stop any active work.
@@ -514,7 +502,7 @@ export function BulkActionBar({
                 )}
               </div>
             </div>
-            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+            <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-3">
               <p className="text-xs font-semibold text-destructive">
                 Immediate termination
               </p>
@@ -525,10 +513,10 @@ export function BulkActionBar({
             </div>
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                Type {bulkKillCopy.hint} to proceed.
+                Type CONFIRM to proceed.
               </p>
               <Input
-                placeholder={`Type ${bulkKillCopy.hint}`}
+                placeholder="Type CONFIRM to proceed"
                 value={killConfirmation}
                 onChange={(event) => setKillConfirmation(event.target.value)}
                 disabled={isBlocked}

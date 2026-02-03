@@ -37,6 +37,7 @@ import {
   PlayCircle,
   RefreshCw,
   Siren,
+  AlertTriangle,
 } from "lucide-react";
 
 type ControlPanelProps = {
@@ -85,39 +86,8 @@ export function ControlPanel({
   const trimmedAgentName = agentName?.trim();
   const agentDisplayName = trimmedAgentName ?? agentId;
 
-  const buildConfirmationCopy = (action: "kill" | "restart") => {
-    const actionLabel = action === "kill" ? "KILL" : "RESTART";
-    const phrase = trimmedAgentName ? `${actionLabel} ${trimmedAgentName}` : actionLabel;
-    return {
-      actionLabel,
-      phrase,
-      hint: `${phrase} or CONFIRM`,
-    };
-  };
-
-  const isConfirmationValid = (action: "kill" | "restart", value: string) => {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-    if (normalized === "confirm") {
-      return true;
-    }
-    const actionLabel = action === "kill" ? "kill" : "restart";
-    if (normalized === actionLabel) {
-      return true;
-    }
-    if (trimmedAgentName) {
-      return normalized === `${actionLabel} ${trimmedAgentName.toLowerCase()}`;
-    }
-    return false;
-  };
-
-  const killConfirmationCopy = buildConfirmationCopy("kill");
-  const restartConfirmationCopy = buildConfirmationCopy("restart");
-
-  const killConfirmed = isConfirmationValid("kill", killConfirmation);
-  const restartConfirmed = isConfirmationValid("restart", restartConfirmation);
+  const killConfirmed = killConfirmation.trim().toUpperCase() === "CONFIRM";
+  const restartConfirmed = restartConfirmation.trim().toUpperCase() === "CONFIRM";
 
   const isBlocked = disabled || !dispatch || pendingAction !== null;
   const displayedStatus =
@@ -425,6 +395,7 @@ export function ControlPanel({
                 </Button>
               </DialogTrigger>
               <DialogContent
+                className="border-destructive/50"
                 onEscapeKeyDown={(event) => {
                   if (pendingAction === "kill") {
                     event.preventDefault();
@@ -437,7 +408,10 @@ export function ControlPanel({
                 }}
               >
                 <DialogHeader>
-                  <DialogTitle>Confirm kill</DialogTitle>
+                  <DialogTitle className="flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    Confirm kill
+                  </DialogTitle>
                   <DialogDescription>
                     This will immediately terminate {agentDisplayName}&apos;s
                     active session and stop any in-flight work.
@@ -462,7 +436,7 @@ export function ControlPanel({
                       )}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                  <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-3">
                     <p className="text-xs font-semibold text-destructive">
                       Immediate termination
                     </p>
@@ -473,10 +447,10 @@ export function ControlPanel({
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      Type {killConfirmationCopy.hint} to proceed.
+                      Type CONFIRM to proceed.
                     </p>
                     <Input
-                      placeholder={`Type ${killConfirmationCopy.hint}`}
+                      placeholder="Type CONFIRM to proceed"
                       value={killConfirmation}
                       onChange={(event) => setKillConfirmation(event.target.value)}
                       disabled={isBlocked}
@@ -542,6 +516,7 @@ export function ControlPanel({
                 </Button>
               </DialogTrigger>
               <DialogContent
+                className="border-amber-400/40"
                 onEscapeKeyDown={(event) => {
                   if (pendingAction === "restart") {
                     event.preventDefault();
@@ -554,7 +529,10 @@ export function ControlPanel({
                 }}
               >
                 <DialogHeader>
-                  <DialogTitle>Confirm restart</DialogTitle>
+                  <DialogTitle className="flex items-center gap-2 text-amber-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    Confirm restart
+                  </DialogTitle>
                   <DialogDescription>
                     This will restart {agentDisplayName}&apos;s session and reset
                     its in-memory context.
@@ -579,8 +557,8 @@ export function ControlPanel({
                       )}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
-                    <p className="text-xs font-semibold text-destructive">
+                  <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3">
+                    <p className="text-xs font-semibold text-amber-200">
                       Context reset
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -590,10 +568,10 @@ export function ControlPanel({
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      Type {restartConfirmationCopy.hint} to proceed.
+                      Type CONFIRM to proceed.
                     </p>
                     <Input
-                      placeholder={`Type ${restartConfirmationCopy.hint}`}
+                      placeholder="Type CONFIRM to proceed"
                       value={restartConfirmation}
                       onChange={(event) => setRestartConfirmation(event.target.value)}
                       disabled={isBlocked}

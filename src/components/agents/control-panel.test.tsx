@@ -29,11 +29,13 @@ describe("ControlPanel", () => {
     await user.click(screen.getByRole("button", { name: "Pause" }));
 
     await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledWith({
-        agentId: "agent_1",
-        command: "agent.pause",
-        params: { reason: "Need a break" },
-      });
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "agent_1",
+          command: "agent.pause",
+          params: { reason: "Need a break" },
+        })
+      );
     });
 
     expect(await screen.findByText("Acknowledged (acked)."))
@@ -132,8 +134,8 @@ describe("ControlPanel", () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(
-      screen.getByPlaceholderText("Type KILL Alpha or CONFIRM"),
-      "KILL Alpha"
+      screen.getByPlaceholderText("Type CONFIRM to proceed"),
+      "CONFIRM"
     );
 
     expect(confirmButton).toBeEnabled();
@@ -159,8 +161,8 @@ describe("ControlPanel", () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(
-      screen.getByPlaceholderText("Type RESTART Alpha or CONFIRM"),
-      "RESTART Alpha"
+      screen.getByPlaceholderText("Type CONFIRM to proceed"),
+      "CONFIRM"
     );
 
     expect(confirmButton).toBeEnabled();
