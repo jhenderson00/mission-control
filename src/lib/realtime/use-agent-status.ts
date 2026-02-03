@@ -35,12 +35,14 @@ export function useAgentStatus(options: UseAgentStatusOptions = {}) {
     filteredIds && filteredIds.length > 0 ? filteredIds : undefined;
   const data = useQuery(api.agents.listStatus, { agentIds });
 
+  const staleAfterMs = 15 * 60 * 1000;
   const sync = useStateSync<AgentStatusRecord>({
     key: "agent-status",
     items: data === undefined ? undefined : (data as AgentStatusRecord[]),
     getId: (status) => status.agentId,
     getTimestamp: (status) =>
       Math.max(status.lastActivity ?? 0, status.lastHeartbeat ?? 0),
+    staleAfterMs,
   });
 
   const statuses = useMemo<AgentStatusRecord[]>(

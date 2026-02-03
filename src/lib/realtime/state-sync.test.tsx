@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import type { ConnectionState } from "convex/browser";
@@ -14,6 +14,12 @@ type TestEvent = {
   id: string;
   timestamp: number;
   sequence: number;
+};
+
+type FreshnessEvent = {
+  id: string;
+  createdAt: number;
+  receivedAt: number;
 };
 
 function SyncProbe({ items }: { items: TestEvent[] | undefined }) {
@@ -35,6 +41,18 @@ function SyncProbe({ items }: { items: TestEvent[] | undefined }) {
       data-count={String(sync.items.length)}
     />
   );
+}
+
+function FreshnessProbe({ items }: { items: FreshnessEvent[] | undefined }) {
+  const sync = useStateSync<FreshnessEvent>({
+    key: "freshness-stream",
+    items,
+    getId: (event) => event.id,
+    getTimestamp: (event) => Math.max(event.createdAt, event.receivedAt),
+    staleAfterMs: 5 * 60 * 1000,
+  });
+
+  return <div data-testid="freshness" data-stale={String(sync.isStale)} />;
 }
 
 function resetConnectionStore() {
@@ -126,5 +144,29 @@ describe("state-sync", () => {
     await waitFor(() => {
       expect(screen.getByTestId("sync")).toHaveAttribute("data-syncing", "false");
     });
+  });
+
+  it("uses receivedAt when it is newer than createdAt for freshness", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T12:00:00Z"));
+      const now = Date.now();
+
+      const items: FreshnessEvent[] = [
+        {
+          id: "event-1",
+          createdAt: now - 60 * 60 * 1000,
+          receivedAt: now - 1000,
+        },
+      ];
+
+      render(<FreshnessProbe items={items} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("freshness")).toHaveAttribute("data-stale", "false");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

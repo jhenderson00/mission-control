@@ -29,6 +29,7 @@ describe("CYD-133 UAT - Realtime Features", () => {
       _id: "event_1",
       agentId: "agent_1",
       createdAt: 1761931200000,
+      receivedAt: 1761931205000,
       type: "chat",
       content: "Initial event",
     };
@@ -36,6 +37,7 @@ describe("CYD-133 UAT - Realtime Features", () => {
       _id: "event_2",
       agentId: "agent_2",
       createdAt: 1761931210000,
+      receivedAt: 1761931214000,
       type: "heartbeat",
       content: "Second event",
     };
