@@ -11,6 +11,7 @@
 import type * as agentLinking from "../agentLinking.js";
 import type * as agents from "../agents.js";
 import type * as audit from "../audit.js";
+import type * as contextGraph from "../contextGraph.js";
 import type * as controls from "../controls.js";
 import type * as conversations from "../conversations.js";
 import type * as decisions from "../decisions.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   agentLinking: typeof agentLinking;
   agents: typeof agents;
   audit: typeof audit;
+  contextGraph: typeof contextGraph;
   controls: typeof controls;
   conversations: typeof conversations;
   decisions: typeof decisions;

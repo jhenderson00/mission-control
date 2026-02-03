@@ -66,6 +66,9 @@ export const api = {
     auditByAgent: makeFunctionReference<"query">("controls:auditByAgent"),
     auditByOperator: makeFunctionReference<"query">("controls:auditByOperator"),
   },
+  contextGraph: {
+    getGraph: makeFunctionReference<"query">("contextGraph:getGraph"),
+  },
 };
 
 export const internal = {};
