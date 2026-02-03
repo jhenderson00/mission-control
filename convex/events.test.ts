@@ -151,17 +151,17 @@ describe("events functions", () => {
 
     const diagnostics = await asHandler(events.listDiagnostics)._handler(ctx, { limit: 10 });
 
-    expect(diagnostics.some((event) => event.eventType === "chat")).toBe(false);
+    expect(diagnostics.some((event: { eventType: string }) => event.eventType === "chat")).toBe(false);
 
-    const tool = diagnostics.find((event) => event.eventType === "tool_result");
+    const tool = diagnostics.find((event: { eventType: string }) => event.eventType === "tool_result");
     expect(tool?.toolName).toBe("search");
     expect(tool?.durationMs).toBe(120);
     expect(tool?.success).toBe(true);
 
-    const diag = diagnostics.find((event) => event.eventType === "diagnostic.warning");
+    const diag = diagnostics.find((event: { eventType: string }) => event.eventType === "diagnostic.warning");
     expect(diag?.level).toBe("warning");
 
-    const health = diagnostics.find((event) => event.eventType === "health");
+    const health = diagnostics.find((event: { eventType: string }) => event.eventType === "health");
     expect(health?.level).toBe("error");
   });
 
