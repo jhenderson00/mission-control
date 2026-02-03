@@ -25,7 +25,7 @@ const DEFAULTS = {
   requestTimeoutMs: 10000,
 };
 
-const payloadSchema = z.record(z.unknown());
+const payloadSchema = z.record(z.string(), z.unknown());
 
 const createRequestId = (): string => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
