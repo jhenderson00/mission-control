@@ -1535,12 +1535,17 @@ class Bridge {
   }
 }
 
+export { Bridge };
+
 async function main(): Promise<void> {
   const bridge = new Bridge(loadConfig());
   await bridge.start();
 }
 
-main().catch((error) => {
-  console.error("[bridge] startup failure", error);
-  process.exit(1);
-});
+const isMain = typeof require !== "undefined" && require.main === module;
+if (isMain) {
+  main().catch((error) => {
+    console.error("[bridge] startup failure", error);
+    process.exit(1);
+  });
+}

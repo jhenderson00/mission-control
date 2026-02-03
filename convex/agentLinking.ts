@@ -189,3 +189,7 @@ export async function resolveAgentLookup(
 export function normalizeAgentIdForLookup(value: string): string | null {
   return normalizeAgentIdInput(value);
 }
+
+export function clearAgentRecordCache(): void {
+  agentRecordCache.clear();
+}

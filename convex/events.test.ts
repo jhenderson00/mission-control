@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as events from "./events";
+import { internal } from "./_generated/api";
 import { createMockCtx, asHandler, asHttpAction } from "@/test/convex-test-utils";
 
 describe("events functions", () => {
@@ -381,6 +382,48 @@ describe("events functions", () => {
     expect(ctx.runMutation).toHaveBeenCalled();
   });
 
+  it("routes presence and heartbeat events to status updates", async () => {
+    const ctx = { runMutation: vi.fn(async () => {}) };
+    const payload = [
+      {
+        eventId: "evt_presence",
+        eventType: "presence",
+        agentId: "agent_presence",
+        sessionKey: "session_presence",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: { entries: [] },
+      },
+      {
+        eventId: "evt_heartbeat",
+        eventType: "heartbeat",
+        agentId: "agent_heartbeat",
+        sessionKey: "session_heartbeat",
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        payload: { status: "ok" },
+      },
+    ];
+
+    const response = await asHttpAction(events.ingest)(
+      ctx as never,
+      new Request("https://example.test/ingest", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledWith(
+      internal.agents.updateStatusFromEvent,
+      expect.objectContaining({ eventId: "evt_presence" })
+    );
+    expect(ctx.runMutation).toHaveBeenCalledWith(
+      internal.agents.updateStatusFromEvent,
+      expect.objectContaining({ eventId: "evt_heartbeat" })
+    );
+  });
+
   it("rejects unauthorized or invalid ingest payloads", async () => {
     const originalSecret = process.env.BRIDGE_SECRET;
     process.env.BRIDGE_SECRET = "secret";
@@ -397,6 +440,20 @@ describe("events functions", () => {
     );
     expect(invalid.status).toBe(400);
 
+    process.env.BRIDGE_SECRET = originalSecret;
+  });
+
+  it("rejects invalid json bodies", async () => {
+    const originalSecret = process.env.BRIDGE_SECRET;
+    process.env.BRIDGE_SECRET = "";
+    const invalidJson = await asHttpAction(events.ingest)(
+      { runMutation: vi.fn() } as never,
+      new Request("https://example.test/ingest", {
+        method: "POST",
+        body: "{",
+      })
+    );
+    expect(invalidJson.status).toBe(400);
     process.env.BRIDGE_SECRET = originalSecret;
   });
 });

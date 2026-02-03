@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as agents from "./agents";
+import { clearAgentRecordCache } from "./agentLinking";
 import { createMockCtx, asHandler, asHttpAction } from "@/test/convex-test-utils";
 
 describe("agents functions", () => {
   beforeEach(() => {
+    clearAgentRecordCache();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T12:00:00Z"));
   });
@@ -57,6 +59,34 @@ describe("agents functions", () => {
 
     const agent = await asHandler(agents.get)._handler(ctx, { id: id as never });
     expect(agent?.name).toBe("Gamma");
+  });
+
+  it("resolves bridge agent ids for convex or bridge identifiers", async () => {
+    const ctx = createMockCtx();
+    const id = await ctx.db.insert("agents", {
+      name: "Bridge",
+      status: "idle",
+      type: "executor",
+      model: "m1",
+      host: "local",
+      bridgeAgentId: "agent_bridge",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const resolvedFromConvex = await asHandler(agents.resolveBridgeAgentId)._handler(ctx, {
+      id: id as never,
+    });
+    const resolvedFromBridge = await asHandler(agents.resolveBridgeAgentId)._handler(ctx, {
+      id: "agent_bridge",
+    });
+    const resolvedUnknown = await asHandler(agents.resolveBridgeAgentId)._handler(ctx, {
+      id: "agent_unknown",
+    });
+
+    expect(resolvedFromConvex).toBe("agent_bridge");
+    expect(resolvedFromBridge).toBe("agent_bridge");
+    expect(resolvedUnknown).toBe("agent_unknown");
   });
 
   it("lists agents with their current tasks", async () => {
@@ -203,6 +233,7 @@ describe("agents functions", () => {
 
   it("updates status from presence entries", async () => {
     const ctx = createMockCtx();
+    const lastSeen = new Date().toISOString();
     await asHandler(agents.updateStatusFromEvent)._handler(ctx, {
       eventId: "evt_presence",
       eventType: "presence",
@@ -214,7 +245,7 @@ describe("agents functions", () => {
         entries: [
           {
             deviceId: "agent_alpha",
-            lastSeen: new Date().toISOString(),
+            lastSeen,
           },
         ],
       },
@@ -229,6 +260,31 @@ describe("agents functions", () => {
     expect(agentRecord).toBeTruthy();
     expect(statuses[0].agentId).toBe(agentRecord?._id);
     expect(statuses[0].status).toBe("online");
+    expect(statuses[0].currentSession).toBe("session_presence");
+    expect(statuses[0].lastHeartbeat).toBe(Date.parse(lastSeen));
+    expect(statuses[0].sessionInfo).toEqual(
+      expect.objectContaining({ deviceId: "agent_alpha" })
+    );
+  });
+
+  it("auto-creates agents from status events", async () => {
+    const ctx = createMockCtx();
+    await asHandler(agents.updateStatusFromEvent)._handler(ctx, {
+      eventId: "evt_new_agent",
+      eventType: "heartbeat",
+      agentId: "agent_new",
+      sessionKey: "session_new",
+      timestamp: new Date().toISOString(),
+      sequence: 10,
+      payload: { status: "ok" },
+    });
+
+    const created = await ctx.db
+      .query("agents")
+      .withIndex("by_bridge_agent_id", (q) => q.eq("bridgeAgentId", "agent_new"))
+      .first();
+    expect(created).toBeTruthy();
+    expect(created?.name).toBe("agent_new");
   });
 
   it("updates status from heartbeat events", async () => {
