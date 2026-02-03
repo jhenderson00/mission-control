@@ -51,6 +51,9 @@ const eventTypes = [
   "thinking",
   "error",
   "token_usage",
+  "session_start",
+  "session_end",
+  "memory_operation",
 ] as const;
 
 type NormalizedEvent = {
@@ -311,6 +314,40 @@ function summarizePayload(eventType: string, payload: unknown): string {
       }
       return `${tokenLabel}${durationLabel ? ` · ${durationLabel}` : ""}`;
     }
+    case "session_start": {
+      const sessionKey = resolveStringField(record, ["sessionKey", "session_key"]);
+      const agentId = resolveStringField(record, ["agentId", "agent_id"]);
+      return sessionKey
+        ? `Session started: ${sessionKey}${agentId ? ` (${agentId})` : ""}`
+        : "Session started";
+    }
+    case "session_end": {
+      const sessionKey = resolveStringField(record, ["sessionKey", "session_key"]);
+      const durationMs = resolveNumberField(record.durationMs, record.duration_ms);
+      const durationLabel = formatDurationMs(durationMs);
+      const messageCount = resolveNumberField(record.messageCount, record.message_count);
+      const parts = [
+        durationLabel ? `duration: ${durationLabel}` : null,
+        messageCount !== null ? `${messageCount} messages` : null,
+      ].filter(Boolean);
+      return sessionKey
+        ? `Session ended: ${sessionKey}${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`
+        : `Session ended${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
+    }
+    case "memory_operation": {
+      const operation = resolveStringField(record, ["operation", "op"]);
+      const memoryType = resolveStringField(record, ["memoryType", "memory_type", "type"]);
+      const key = resolveStringField(record, ["key", "name"]);
+      const success = resolveBooleanField(record.success, record.ok);
+      const statusLabel = success === false ? " [FAILED]" : "";
+      if (operation && memoryType) {
+        return `Memory ${operation}: ${memoryType}${key ? ` (${key})` : ""}${statusLabel}`;
+      }
+      if (operation) {
+        return `Memory ${operation}${key ? `: ${key}` : ""}${statusLabel}`;
+      }
+      return `Memory operation${key ? `: ${key}` : ""}${statusLabel}`;
+    }
   }
 
   // Try to extract text content from nested structures
@@ -568,6 +605,64 @@ export const ingest = httpAction(async (ctx, request): Promise<Response> => {
       case "heartbeat":
         await ctx.runMutation(internal.agents.updateStatusFromEvent, event);
         break;
+      case "session_start":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.startSession, {
+            agentId: event.agentId,
+            sessionKey: event.sessionKey,
+            startedAt: receivedAt,
+          });
+        }
+        break;
+      case "session_end":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.endSession, {
+            agentId: event.agentId,
+            sessionKey: event.sessionKey,
+            endedAt: receivedAt,
+            payload: event.payload,
+          });
+        }
+        break;
+      case "tool_call":
+      case "tool_result":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.incrementSessionToolCount, {
+            sessionKey: event.sessionKey,
+            payload: event.payload,
+          });
+        }
+        break;
+      case "error":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.incrementSessionErrorCount, {
+            sessionKey: event.sessionKey,
+          });
+        }
+        break;
+      case "thinking":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.incrementSessionThinkingCount, {
+            sessionKey: event.sessionKey,
+          });
+        }
+        break;
+      case "token_usage":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.addSessionTokenUsage, {
+            sessionKey: event.sessionKey,
+            payload: event.payload,
+          });
+        }
+        break;
+      case "memory_operation":
+        if (event.sessionKey) {
+          await ctx.runMutation(internal.events.recordMemoryOperation, {
+            sessionKey: event.sessionKey,
+            payload: event.payload,
+          });
+        }
+        break;
       default:
         break;
     }
@@ -578,6 +673,7 @@ export const ingest = httpAction(async (ctx, request): Promise<Response> => {
 
 /**
  * Store a raw Gateway event (idempotent by eventId).
+ * Extracts denormalized fields for efficient querying.
  */
 export const store = internalMutation({
   args: eventValidator,
@@ -598,11 +694,339 @@ export const store = internalMutation({
     const canonicalAgentId = agentRecord?._id ?? normalizedAgentId ?? args.agentId;
 
     const receivedAt = args.receivedAt ?? Date.now();
+
+    // Extract denormalized fields from payload
+    const record = asRecord(args.payload);
+    const toolName = record
+      ? resolveStringField(record, ["toolName", "tool_name", "name"])
+      : null;
+    const errorCode = record
+      ? resolveStringField(record, ["code", "errorCode", "error_code"])
+      : null;
+    const durationMs = record ? resolveDurationMs(record) : null;
+
     return await ctx.db.insert("events", {
       ...args,
       agentId: canonicalAgentId,
       receivedAt,
+      toolName: toolName ?? undefined,
+      errorCode: errorCode ?? undefined,
+      durationMs: durationMs ?? undefined,
     });
+  },
+});
+
+/**
+ * Start a new session and create session metrics record.
+ */
+export const startSession = internalMutation({
+  args: {
+    agentId: v.string(),
+    sessionKey: v.string(),
+    startedAt: v.number(),
+  },
+  handler: async (ctx, args): Promise<string> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (existing) {
+      // Session already exists, just update status if needed
+      if (existing.status !== "active") {
+        await ctx.db.patch(existing._id, {
+          status: "active",
+          lastActivityAt: args.startedAt,
+          updatedAt: args.startedAt,
+        });
+      }
+      return existing._id;
+    }
+
+    return await ctx.db.insert("sessionMetrics", {
+      sessionKey: args.sessionKey,
+      agentId: args.agentId,
+      startedAt: args.startedAt,
+      status: "active",
+      messageCount: 0,
+      toolCallCount: 0,
+      errorCount: 0,
+      thinkingEventCount: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      memoryReadCount: 0,
+      memoryWriteCount: 0,
+      lastActivityAt: args.startedAt,
+      updatedAt: args.startedAt,
+    });
+  },
+});
+
+/**
+ * End a session and record final metrics.
+ */
+export const endSession = internalMutation({
+  args: {
+    agentId: v.string(),
+    sessionKey: v.string(),
+    endedAt: v.number(),
+    payload: v.optional(v.any()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (!existing) {
+      // Create a completed session record
+      await ctx.db.insert("sessionMetrics", {
+        sessionKey: args.sessionKey,
+        agentId: args.agentId,
+        startedAt: args.endedAt,
+        endedAt: args.endedAt,
+        durationMs: 0,
+        status: "completed",
+        messageCount: 0,
+        toolCallCount: 0,
+        errorCount: 0,
+        thinkingEventCount: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        memoryReadCount: 0,
+        memoryWriteCount: 0,
+        lastActivityAt: args.endedAt,
+        updatedAt: args.endedAt,
+      });
+      return;
+    }
+
+    const record = asRecord(args.payload);
+    const durationMs =
+      record
+        ? resolveNumberField(record.durationMs, record.duration_ms)
+        : null;
+    const computedDuration = durationMs ?? args.endedAt - existing.startedAt;
+
+    await ctx.db.patch(existing._id, {
+      endedAt: args.endedAt,
+      durationMs: computedDuration,
+      status: "completed",
+      lastActivityAt: args.endedAt,
+      updatedAt: args.endedAt,
+    });
+  },
+});
+
+/**
+ * Increment tool call count for a session.
+ */
+export const incrementSessionToolCount = internalMutation({
+  args: {
+    sessionKey: v.string(),
+    payload: v.optional(v.any()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (!existing) {
+      return;
+    }
+
+    const now = Date.now();
+    const record = asRecord(args.payload);
+    const durationMs = record ? resolveDurationMs(record) : null;
+
+    const updates: Record<string, unknown> = {
+      toolCallCount: existing.toolCallCount + 1,
+      lastActivityAt: now,
+      updatedAt: now,
+    };
+
+    // Update max tool duration if applicable
+    if (durationMs !== null) {
+      if (
+        existing.maxToolDurationMs === undefined ||
+        durationMs > existing.maxToolDurationMs
+      ) {
+        updates.maxToolDurationMs = durationMs;
+      }
+
+      // Recalculate average tool duration
+      const currentTotal =
+        (existing.avgToolDurationMs ?? 0) * existing.toolCallCount;
+      const newAvg = (currentTotal + durationMs) / (existing.toolCallCount + 1);
+      updates.avgToolDurationMs = Math.round(newAvg);
+    }
+
+    await ctx.db.patch(existing._id, updates);
+  },
+});
+
+/**
+ * Increment error count for a session.
+ */
+export const incrementSessionErrorCount = internalMutation({
+  args: {
+    sessionKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (!existing) {
+      return;
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(existing._id, {
+      errorCount: existing.errorCount + 1,
+      lastActivityAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+/**
+ * Increment thinking event count for a session.
+ */
+export const incrementSessionThinkingCount = internalMutation({
+  args: {
+    sessionKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (!existing) {
+      return;
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(existing._id, {
+      thinkingEventCount: existing.thinkingEventCount + 1,
+      lastActivityAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+/**
+ * Add token usage to session totals.
+ */
+export const addSessionTokenUsage = internalMutation({
+  args: {
+    sessionKey: v.string(),
+    payload: v.optional(v.any()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (!existing) {
+      return;
+    }
+
+    const record = asRecord(args.payload);
+    if (!record) {
+      return;
+    }
+
+    const inputTokens = resolveNumberField(
+      record.inputTokens,
+      record.input_tokens
+    );
+    const outputTokens = resolveNumberField(
+      record.outputTokens,
+      record.output_tokens
+    );
+    const cacheReadTokens = resolveNumberField(
+      record.cacheReadTokens,
+      record.cache_read_tokens
+    );
+    const cacheWriteTokens = resolveNumberField(
+      record.cacheWriteTokens,
+      record.cache_write_tokens
+    );
+    const costUsd = resolveNumberField(record.costUsd, record.cost_usd);
+
+    const now = Date.now();
+    const updates: Record<string, unknown> = {
+      lastActivityAt: now,
+      updatedAt: now,
+    };
+
+    if (inputTokens !== null) {
+      updates.totalInputTokens = existing.totalInputTokens + inputTokens;
+    }
+    if (outputTokens !== null) {
+      updates.totalOutputTokens = existing.totalOutputTokens + outputTokens;
+    }
+    if (cacheReadTokens !== null) {
+      updates.totalCacheReadTokens =
+        (existing.totalCacheReadTokens ?? 0) + cacheReadTokens;
+    }
+    if (cacheWriteTokens !== null) {
+      updates.totalCacheWriteTokens =
+        (existing.totalCacheWriteTokens ?? 0) + cacheWriteTokens;
+    }
+    if (costUsd !== null) {
+      updates.estimatedCostUsd = (existing.estimatedCostUsd ?? 0) + costUsd;
+    }
+
+    await ctx.db.patch(existing._id, updates);
+  },
+});
+
+/**
+ * Record a memory operation for a session.
+ */
+export const recordMemoryOperation = internalMutation({
+  args: {
+    sessionKey: v.string(),
+    payload: v.optional(v.any()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
+
+    if (!existing) {
+      return;
+    }
+
+    const record = asRecord(args.payload);
+    const operation = record
+      ? resolveStringField(record, ["operation", "op"])
+      : null;
+
+    const now = Date.now();
+    const updates: Record<string, unknown> = {
+      lastActivityAt: now,
+      updatedAt: now,
+    };
+
+    if (operation === "read") {
+      updates.memoryReadCount = existing.memoryReadCount + 1;
+    } else if (
+      operation === "write" ||
+      operation === "update" ||
+      operation === "sync"
+    ) {
+      updates.memoryWriteCount = existing.memoryWriteCount + 1;
+    }
+
+    await ctx.db.patch(existing._id, updates);
   },
 });
 
@@ -797,5 +1221,76 @@ export const countsByType = query({
     );
 
     return Object.fromEntries(entries) as Record<(typeof eventTypes)[number], number>;
+  },
+});
+
+/**
+ * Get session metrics for an agent.
+ */
+export const listSessionMetrics = query({
+  args: {
+    agentId: v.optional(v.string()),
+    limit: v.optional(v.number()),
+    status: v.optional(
+      v.union(
+        v.literal("active"),
+        v.literal("paused"),
+        v.literal("completed"),
+        v.literal("failed")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 100);
+
+    if (args.agentId) {
+      const normalizedInput = normalizeAgentIdForLookup(args.agentId);
+      if (!normalizedInput) {
+        return [];
+      }
+      const bridgeAgentId = await resolveBridgeAgentId(ctx, normalizedInput);
+      if (!bridgeAgentId) {
+        return [];
+      }
+      const results = await ctx.db
+        .query("sessionMetrics")
+        .withIndex("by_agent", (q) => q.eq("agentId", bridgeAgentId))
+        .order("desc")
+        .take(limit * 2);
+
+      const filtered = args.status
+        ? results.filter((s) => s.status === args.status)
+        : results;
+      return filtered.slice(0, limit);
+    }
+
+    if (args.status) {
+      return await ctx.db
+        .query("sessionMetrics")
+        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .order("desc")
+        .take(limit);
+    }
+
+    return await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_started")
+      .order("desc")
+      .take(limit);
+  },
+});
+
+/**
+ * Get session metrics by session key.
+ */
+export const getSessionMetrics = query({
+  args: {
+    sessionKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("sessionMetrics")
+      .withIndex("by_session", (q) => q.eq("sessionKey", args.sessionKey))
+      .first();
   },
 });

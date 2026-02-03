@@ -52,7 +52,9 @@ type TableName =
   | "messages"
   | "agentControlOperations"
   | "agentControlAudits"
-  | "auditLogs";
+  | "auditLogs"
+  | "sessionMetrics"
+  | "notifications";
 
 type Document = {
   _id: string;
@@ -232,6 +234,8 @@ class InMemoryDB {
     agentControlOperations: [],
     agentControlAudits: [],
     auditLogs: [],
+    sessionMetrics: [],
+    notifications: [],
   };
 
   query(table: TableName) {

@@ -186,11 +186,59 @@ export default defineSchema({
     sourceEventType: v.optional(v.string()),
     runId: v.optional(v.string()),
     receivedAt: v.number(), // Convex server time
+    // Denormalized fields for efficient querying
+    toolName: v.optional(v.string()), // For tool_call/tool_result events
+    errorCode: v.optional(v.string()), // For error events
+    durationMs: v.optional(v.number()), // For timed events
   })
     .index("by_agent", ["agentId", "timestamp"])
     .index("by_session", ["sessionKey", "sequence"])
     .index("by_type", ["eventType", "timestamp"])
-    .index("by_event_id", ["eventId"]),
+    .index("by_event_id", ["eventId"])
+    .index("by_run", ["runId", "timestamp"])
+    .index("by_tool", ["toolName", "timestamp"]),
+
+  /**
+   * Session Metrics - Aggregated session-level statistics
+   */
+  sessionMetrics: defineTable({
+    sessionKey: v.string(),
+    agentId: v.string(),
+    // Lifecycle
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("paused"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    // Counts
+    messageCount: v.number(),
+    toolCallCount: v.number(),
+    errorCount: v.number(),
+    thinkingEventCount: v.number(),
+    // Token usage (aggregated)
+    totalInputTokens: v.number(),
+    totalOutputTokens: v.number(),
+    totalCacheReadTokens: v.optional(v.number()),
+    totalCacheWriteTokens: v.optional(v.number()),
+    estimatedCostUsd: v.optional(v.number()),
+    // Memory operations
+    memoryReadCount: v.number(),
+    memoryWriteCount: v.number(),
+    // Performance
+    avgToolDurationMs: v.optional(v.number()),
+    maxToolDurationMs: v.optional(v.number()),
+    // Timestamps
+    lastActivityAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_session", ["sessionKey"])
+    .index("by_agent", ["agentId", "startedAt"])
+    .index("by_status", ["status", "startedAt"])
+    .index("by_started", ["startedAt"]),
 
   /**
    * AgentStatus - Materialized agent presence/health state
