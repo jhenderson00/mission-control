@@ -35,7 +35,7 @@ const DEFAULTS = {
   requestTimeoutMs: 10000,
   gapThresholdMs: 5000,
   historyLimit: 50,
-  controlPort: 8787,
+  controlPort: 3001,
   controlMaxBodyBytes: 1024 * 1024,
 };
 
@@ -303,7 +303,12 @@ function agentIdFromSession(session: unknown): string | null {
 }
 
 function resolveControlSecret(): string | null {
-  return process.env.BRIDGE_CONTROL_SECRET ?? process.env.BRIDGE_SECRET ?? null;
+  return (
+    process.env.BRIDGE_CONTROL_SECRET ??
+    process.env.BRIDGE_AUTH_SECRET ??
+    process.env.BRIDGE_SECRET ??
+    null
+  );
 }
 
 function resolveHeaderValue(

@@ -26,6 +26,14 @@ GATEWAY_TOKEN=your-gateway-token
 CONVEX_URL=https://<deployment>.convex.cloud
 CONVEX_ACTION_SECRET=your-bridge-secret
 
+# Control endpoint auth (optional)
+BRIDGE_CONTROL_SECRET=your-control-secret
+# Or use BRIDGE_AUTH_SECRET for Convex callers
+BRIDGE_AUTH_SECRET=your-control-secret
+
+# Control endpoint port (default: 3001)
+BRIDGE_CONTROL_PORT=3001
+
 # Optional tuning (set MAX_RECONNECT_ATTEMPTS=0 for unlimited retries)
 RECONNECT_INTERVAL_MS=5000
 MAX_RECONNECT_ATTEMPTS=10
@@ -62,8 +70,8 @@ GET /api/health
 GET /health
 ```
 
-If `BRIDGE_CONTROL_SECRET` is configured, include it as a bearer token to
-retrieve a live gateway health snapshot.
+If `BRIDGE_CONTROL_SECRET` (or `BRIDGE_AUTH_SECRET`) is configured, include it
+as a bearer token to retrieve a live gateway health snapshot.
 
 ## Notes
 
