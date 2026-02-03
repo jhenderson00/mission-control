@@ -729,7 +729,7 @@ export const bulkDispatch = action({
           action: "control.bulkDispatch",
           targetAgentId: operation.agentId,
           parameters: sanitizedParams,
-          outcome: "error",
+          outcome: "error" as const,
           operatorId: requestedBy,
           operatorEmail,
           sourceIp,
@@ -805,12 +805,13 @@ export const bulkDispatch = action({
         action: "control.bulkDispatch",
         targetAgentId: operation.agentId,
         parameters: sanitizedParams,
-        outcome:
+        outcome: (
           bridgeAck.status === "accepted"
             ? "accepted"
             : bridgeAck.status === "rejected"
               ? "rejected"
-              : "error",
+              : "error"
+        ) as "accepted" | "rejected" | "error",
         operatorId: requestedBy,
         operatorEmail,
         sourceIp,

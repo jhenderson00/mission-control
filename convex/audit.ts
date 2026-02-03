@@ -11,6 +11,8 @@ const outcomeValidator = v.union(
   v.literal("completed")
 );
 
+export type AuditOutcome = "accepted" | "rejected" | "error" | "timed-out" | "completed";
+
 const auditEntryValidator = v.object({
   timestamp: v.optional(v.number()),
   operatorId: v.string(),
