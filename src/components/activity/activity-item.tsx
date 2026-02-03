@@ -16,6 +16,9 @@ const typeTone: Record<string, string> = {
   thinking: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
   error: "border-red-500/30 bg-red-500/10 text-red-200",
   token_usage: "border-teal-500/30 bg-teal-500/10 text-teal-200",
+  session_start: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200",
+  session_end: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+  memory_operation: "border-violet-500/30 bg-violet-500/10 text-violet-200",
 };
 
 const diagnosticToneBySeverity: Record<string, string> = {

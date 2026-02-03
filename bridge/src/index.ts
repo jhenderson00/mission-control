@@ -172,6 +172,166 @@ function resolveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function resolveStringField(
+  record: Record<string, unknown>,
+  keys: string[]
+): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveNumberField(
+  record: Record<string, unknown>,
+  keys: string[]
+): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function resolveBooleanField(
+  record: Record<string, unknown>,
+  keys: string[]
+): boolean | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+  return null;
+}
+
+function resolveStringFromSources(
+  sources: Array<Record<string, unknown> | null | undefined>,
+  keys: string[]
+): string | null {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    const value = resolveStringField(source, keys);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function resolveNumberFromSources(
+  sources: Array<Record<string, unknown> | null | undefined>,
+  keys: string[]
+): number | null {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    const value = resolveNumberField(source, keys);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function resolveValueFromSources(
+  sources: Array<Record<string, unknown> | null | undefined>,
+  keys: string[]
+): unknown | undefined {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        return source[key];
+      }
+    }
+  }
+  return undefined;
+}
+
+function resolveBooleanFromSources(
+  sources: Array<Record<string, unknown> | null | undefined>,
+  keys: string[]
+): boolean | null {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    const value = resolveBooleanField(source, keys);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function normalizeStatus(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (["start", "started", "starting", "open", "opened"].includes(normalized)) {
+    return "started";
+  }
+  if (
+    ["done", "completed", "complete", "success", "succeeded", "finished", "ok"].includes(
+      normalized
+    )
+  ) {
+    return "completed";
+  }
+  if (
+    ["error", "failed", "failure", "timeout", "canceled", "cancelled"].includes(
+      normalized
+    )
+  ) {
+    return "failed";
+  }
+  if (["streaming", "running", "active"].includes(normalized)) {
+    return "streaming";
+  }
+  return normalized;
+}
+
+function ensurePayloadStatus(payload: unknown, status: string): unknown {
+  const record = resolveRecord(payload);
+  if (!record) {
+    return payload;
+  }
+  if (typeof record.status === "string" && record.status.length > 0) {
+    return payload;
+  }
+  return { ...record, status };
+}
+
+function ensurePayloadEvent(payload: unknown, event: string): unknown {
+  const record = resolveRecord(payload);
+  if (!record) {
+    return payload;
+  }
+  if (typeof record.event === "string" && record.event.length > 0) {
+    return payload;
+  }
+  return { ...record, event };
+}
+
 function normalizeAgentType(value: unknown): AgentMetadataUpdate["type"] | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -263,6 +423,407 @@ function parseTimestampMs(value: string | undefined, fallback: number): number {
   }
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function normalizeGatewayEventType(
+  event: string,
+  payload: unknown
+): { eventType: string; payload: unknown } {
+  const normalized = event.trim().toLowerCase();
+  switch (normalized) {
+    case "session.start":
+    case "session_start":
+      return { eventType: "session_start", payload: ensurePayloadEvent(payload, "start") };
+    case "session.end":
+    case "session_end":
+      return { eventType: "session_end", payload: ensurePayloadEvent(payload, "end") };
+    case "tool.call.start":
+    case "tool_call.start":
+    case "tool.call.started":
+    case "tool_call_started":
+      return { eventType: "tool_call", payload: ensurePayloadStatus(payload, "started") };
+    case "tool.call.end":
+    case "tool.call.result":
+    case "tool.call.completed":
+    case "tool_call.end":
+    case "tool_call.completed":
+    case "tool_result":
+      return { eventType: "tool_result", payload: ensurePayloadStatus(payload, "completed") };
+    case "tool.call.error":
+    case "tool.call.failed":
+    case "tool_call.error":
+    case "tool_call.failed":
+      return { eventType: "tool_result", payload: ensurePayloadStatus(payload, "failed") };
+    case "memory.operation":
+    case "memory_operation":
+      return { eventType: "memory_operation", payload };
+    case "agent.thinking":
+    case "agent.reasoning":
+    case "reasoning":
+      return { eventType: "thinking", payload };
+    default:
+      return { eventType: event, payload };
+  }
+}
+
+function extractErrorDetails(
+  payloadRecord: Record<string, unknown>,
+  delta?: Record<string, unknown> | null
+): {
+  message?: string;
+  stack?: string;
+  code?: string;
+  severity?: string;
+  recoverable?: boolean;
+  context?: Record<string, unknown>;
+} {
+  const errorRecord = resolveRecord(payloadRecord.error);
+  const exceptionRecord = resolveRecord(payloadRecord.exception);
+  const sources = [delta, payloadRecord, errorRecord, exceptionRecord];
+
+  const message = resolveStringFromSources(sources, [
+    "message",
+    "error",
+    "errorMessage",
+    "detail",
+    "summary",
+    "reason",
+  ]);
+  const stack = resolveStringFromSources(sources, [
+    "stack",
+    "trace",
+    "errorStack",
+    "error_trace",
+  ]);
+  const code = resolveStringFromSources(sources, [
+    "code",
+    "errorCode",
+    "error_code",
+  ]);
+  const severity = resolveStringFromSources(sources, [
+    "severity",
+    "level",
+  ]);
+  const recoverable = resolveBooleanFromSources(sources, [
+    "recoverable",
+    "retryable",
+    "canRetry",
+  ]);
+  const context =
+    resolveRecord(payloadRecord.context) ??
+    resolveRecord(payloadRecord.errorContext) ??
+    resolveRecord(payloadRecord.metadata) ??
+    undefined;
+
+  return {
+    message: message ?? undefined,
+    stack: stack ?? undefined,
+    code: code ?? undefined,
+    severity: severity ?? undefined,
+    recoverable: recoverable ?? undefined,
+    context,
+  };
+}
+
+function extractTokenUsagePayload(
+  payloadRecord: Record<string, unknown>,
+  summary?: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  const usageRecord =
+    resolveRecord(payloadRecord.usage) ??
+    resolveRecord(payloadRecord.tokenUsage) ??
+    resolveRecord(payloadRecord.token_usage) ??
+    resolveRecord(payloadRecord.tokens);
+
+  const sources = [payloadRecord, summary, usageRecord];
+
+  const inputTokens = resolveNumberFromSources(sources, [
+    "inputTokens",
+    "input_tokens",
+    "promptTokens",
+    "prompt_tokens",
+  ]);
+  const outputTokens = resolveNumberFromSources(sources, [
+    "outputTokens",
+    "output_tokens",
+    "completionTokens",
+    "completion_tokens",
+  ]);
+  const totalTokens =
+    resolveNumberFromSources(sources, ["totalTokens", "total_tokens", "tokens"]) ??
+    (inputTokens !== null && outputTokens !== null
+      ? inputTokens + outputTokens
+      : null);
+  const cacheReadTokens = resolveNumberFromSources(sources, [
+    "cacheReadTokens",
+    "cache_read_tokens",
+    "cachedTokens",
+    "cached_tokens",
+  ]);
+  const cacheWriteTokens = resolveNumberFromSources(sources, [
+    "cacheWriteTokens",
+    "cache_write_tokens",
+  ]);
+  const durationMs = resolveNumberFromSources(sources, [
+    "durationMs",
+    "duration_ms",
+    "latencyMs",
+    "latency_ms",
+    "elapsedMs",
+    "elapsed_ms",
+  ]);
+  const costUsd = resolveNumberFromSources(sources, [
+    "costUsd",
+    "cost_usd",
+    "cost",
+  ]);
+  const model = resolveStringFromSources(sources, ["model", "modelId", "model_id"]);
+
+  const payload: Record<string, unknown> = {};
+
+  if (inputTokens !== null) payload.inputTokens = inputTokens;
+  if (outputTokens !== null) payload.outputTokens = outputTokens;
+  if (totalTokens !== null) payload.totalTokens = totalTokens;
+  if (cacheReadTokens !== null) payload.cacheReadTokens = cacheReadTokens;
+  if (cacheWriteTokens !== null) payload.cacheWriteTokens = cacheWriteTokens;
+  if (durationMs !== null) payload.durationMs = durationMs;
+  if (costUsd !== null) payload.costUsd = costUsd;
+  if (model) payload.model = model;
+
+  return Object.keys(payload).length > 0 ? payload : null;
+}
+
+function collectMemoryOperations(
+  source: unknown,
+  entries: Record<string, unknown>[]
+): void {
+  if (!source) {
+    return;
+  }
+  if (Array.isArray(source)) {
+    for (const entry of source) {
+      collectMemoryOperations(entry, entries);
+    }
+    return;
+  }
+  if (typeof source !== "object") {
+    return;
+  }
+  const record = source as Record<string, unknown>;
+  const nested =
+    (Array.isArray(record.entries) ? record.entries : null) ??
+    (Array.isArray(record.events) ? record.events : null) ??
+    (Array.isArray(record.items) ? record.items : null) ??
+    (Array.isArray(record.operations) ? record.operations : null);
+  if (nested) {
+    for (const entry of nested) {
+      collectMemoryOperations(entry, entries);
+    }
+    return;
+  }
+
+  const operation = resolveStringField(record, ["operation", "op", "action"]);
+  const eventType = resolveStringField(record, ["eventType", "type"]);
+  const success = resolveBooleanField(record, ["success", "ok"]);
+  if (operation || success !== null || eventType?.includes("memory")) {
+    entries.push(record);
+  }
+}
+
+function extractMemoryOperations(
+  payloadRecord: Record<string, unknown>,
+  delta?: Record<string, unknown> | null
+): Record<string, unknown>[] {
+  const entries: Record<string, unknown>[] = [];
+
+  collectMemoryOperations(payloadRecord.memoryOperation, entries);
+  collectMemoryOperations(payloadRecord.memory_operation, entries);
+  collectMemoryOperations(payloadRecord.memoryOperations, entries);
+  collectMemoryOperations(payloadRecord.memory_operations, entries);
+  collectMemoryOperations(payloadRecord.memoryOps, entries);
+  collectMemoryOperations(payloadRecord.memory_ops, entries);
+  collectMemoryOperations(payloadRecord.memoryEvent, entries);
+  collectMemoryOperations(payloadRecord.memoryEvents, entries);
+  collectMemoryOperations(payloadRecord.memory_event, entries);
+  collectMemoryOperations(payloadRecord.memory, entries);
+
+  if (delta) {
+    collectMemoryOperations(delta.memoryOperation, entries);
+    collectMemoryOperations(delta.memory_operation, entries);
+    collectMemoryOperations(delta.memoryOperations, entries);
+    collectMemoryOperations(delta.memory_operations, entries);
+    collectMemoryOperations(delta.memoryOps, entries);
+    collectMemoryOperations(delta.memory_ops, entries);
+    collectMemoryOperations(delta.memoryEvent, entries);
+    collectMemoryOperations(delta.memoryEvents, entries);
+    collectMemoryOperations(delta.memory_event, entries);
+    collectMemoryOperations(delta.memory, entries);
+    if (resolveStringField(delta, ["type"])?.includes("memory")) {
+      collectMemoryOperations(delta, entries);
+    }
+  }
+
+  return entries;
+}
+
+type SessionEventCandidate = {
+  eventType: "session_start" | "session_end";
+  payload: Record<string, unknown>;
+  sessionKey?: string;
+};
+
+function collectSessionEntries(
+  source: unknown,
+  entries: Record<string, unknown>[]
+): void {
+  if (!source) {
+    return;
+  }
+  if (Array.isArray(source)) {
+    for (const entry of source) {
+      collectSessionEntries(entry, entries);
+    }
+    return;
+  }
+  if (typeof source !== "object") {
+    return;
+  }
+  const record = source as Record<string, unknown>;
+  const nested =
+    (Array.isArray(record.entries) ? record.entries : null) ??
+    (Array.isArray(record.events) ? record.events : null) ??
+    (Array.isArray(record.items) ? record.items : null);
+  if (nested) {
+    for (const entry of nested) {
+      collectSessionEntries(entry, entries);
+    }
+    return;
+  }
+  entries.push(record);
+}
+
+function resolveSessionEventType(
+  record: Record<string, unknown>
+): SessionEventCandidate["eventType"] | null {
+  const raw = resolveStringField(record, [
+    "event",
+    "eventType",
+    "type",
+    "status",
+    "state",
+    "phase",
+  ]);
+  if (raw) {
+    const normalized = raw.toLowerCase();
+    if (
+      normalized.includes("start") ||
+      normalized.includes("begin") ||
+      normalized.includes("resume") ||
+      normalized.includes("open")
+    ) {
+      return "session_start";
+    }
+    if (
+      normalized.includes("end") ||
+      normalized.includes("stop") ||
+      normalized.includes("close") ||
+      normalized.includes("finish") ||
+      normalized.includes("complete") ||
+      normalized.includes("terminate")
+    ) {
+      return "session_end";
+    }
+  }
+
+  const endedAt = resolveNumberField(record, [
+    "endedAt",
+    "ended_at",
+    "endTime",
+    "end_time",
+  ]);
+  if (endedAt !== null) {
+    return "session_end";
+  }
+  const endedAtStr = resolveStringField(record, [
+    "endedAt",
+    "ended_at",
+    "endTime",
+    "end_time",
+  ]);
+  if (endedAtStr) {
+    return "session_end";
+  }
+
+  const startedAt = resolveNumberField(record, [
+    "startedAt",
+    "started_at",
+    "startTime",
+    "start_time",
+  ]);
+  if (startedAt !== null) {
+    return "session_start";
+  }
+  const startedAtStr = resolveStringField(record, [
+    "startedAt",
+    "started_at",
+    "startTime",
+    "start_time",
+  ]);
+  if (startedAtStr) {
+    return "session_start";
+  }
+
+  return null;
+}
+
+function extractSessionEvents(
+  payloadRecord: Record<string, unknown>,
+  delta: Record<string, unknown> | null,
+  baseSessionKey?: string
+): SessionEventCandidate[] {
+  const entries: Record<string, unknown>[] = [];
+
+  collectSessionEntries(payloadRecord.session, entries);
+  collectSessionEntries(payloadRecord.sessionEvent, entries);
+  collectSessionEntries(payloadRecord.session_event, entries);
+  collectSessionEntries(payloadRecord.sessionInfo, entries);
+  collectSessionEntries(payloadRecord.sessionMetrics, entries);
+  collectSessionEntries(payloadRecord.sessionLifecycle, entries);
+
+  if (delta) {
+    collectSessionEntries(delta.session, entries);
+    collectSessionEntries(delta.sessionEvent, entries);
+    collectSessionEntries(delta.session_event, entries);
+    collectSessionEntries(delta.sessionInfo, entries);
+    collectSessionEntries(delta.sessionMetrics, entries);
+    collectSessionEntries(delta.sessionLifecycle, entries);
+    if (resolveStringField(delta, ["type"])?.includes("session")) {
+      collectSessionEntries(delta, entries);
+    }
+  }
+
+  return entries
+    .map((record) => {
+      const eventType = resolveSessionEventType(record);
+      if (!eventType) {
+        return null;
+      }
+      const sessionKey =
+        resolveStringField(record, ["sessionKey", "session_key", "key", "id"]) ??
+        baseSessionKey ??
+        undefined;
+      const payload = { ...record };
+      if (sessionKey && payload.sessionKey === undefined) {
+        payload.sessionKey = sessionKey;
+      }
+      if (payload.event === undefined) {
+        payload.event = eventType === "session_start" ? "start" : "end";
+      }
+      return { eventType, payload, sessionKey };
+    })
+    .filter(
+      (candidate): candidate is SessionEventCandidate => Boolean(candidate)
+    );
 }
 
 function agentIdFromSessionKey(sessionKey: string | undefined): string | null {
@@ -1001,25 +1562,29 @@ class Bridge {
 
   private normalizeGatewayEvent(frame: GatewayEvent): BridgeEvent {
     const payload = frame.payload;
-    const sessionKey = resolveSessionKey(payload);
+    const normalizedPayload =
+      frame.event === "presence"
+        ? this.normalizePresencePayload(payload)
+        : payload;
+    const normalizedEvent = normalizeGatewayEventType(
+      frame.event,
+      normalizedPayload
+    );
+    const sessionKey = resolveSessionKey(normalizedEvent.payload);
     const rawAgentId =
       frame.event === "presence"
         ? "system"
         : resolveAgentId(payload, "unknown");
     const agentId = this.normalizeAgentId(rawAgentId) ?? rawAgentId;
-    const normalizedPayload =
-      frame.event === "presence"
-        ? this.normalizePresencePayload(payload)
-        : payload;
 
     return {
       eventId: resolveEventId(payload),
-      eventType: frame.event,
+      eventType: normalizedEvent.eventType,
       agentId,
       sessionKey,
       timestamp: resolveTimestamp(payload),
       sequence: frame.seq ?? this.nextSequence(),
-      payload: normalizedPayload,
+      payload: normalizedEvent.payload,
     };
   }
 
@@ -1037,18 +1602,24 @@ class Bridge {
     }
 
     const status = resolveString(payloadRecord.status);
+    const normalizedStatus = normalizeStatus(status);
+    const normalizedStatus = normalizeStatus(status);
     const runId =
       resolveString(payloadRecord.runId) ?? resolveString(payloadRecord.run_id) ?? undefined;
     const delta = resolveRecord(payloadRecord.delta);
     const summary = resolveRecord(payloadRecord.summary);
     const deltaType = delta ? resolveString(delta.type) : null;
 
-    const buildDerived = (eventType: string, payload: Record<string, unknown>): BridgeEvent => {
+    const buildDerived = (
+      eventType: string,
+      payload: Record<string, unknown>,
+      sessionKeyOverride?: string
+    ): BridgeEvent => {
       return {
         eventId: randomUUID(),
         eventType,
         agentId: baseEvent.agentId,
-        sessionKey: baseEvent.sessionKey,
+        sessionKey: sessionKeyOverride ?? baseEvent.sessionKey,
         timestamp: baseEvent.timestamp,
         sequence: this.nextSequence(),
         payload,
@@ -1060,104 +1631,289 @@ class Bridge {
 
     const derived: BridgeEvent[] = [];
 
-    if (deltaType === "tool_call") {
+    const toolEventKeys = new Set<string>();
+    const registerToolEvent = (eventType: string, payload: Record<string, unknown>) => {
       const toolName =
-        resolveString(delta?.toolName) ??
-        resolveString(delta?.tool_name) ??
-        resolveString(payloadRecord.toolName) ??
-        resolveString(payloadRecord.tool_name);
-      const toolInput =
-        delta?.toolInput ??
-        delta?.tool_input ??
-        payloadRecord.toolInput ??
-        payloadRecord.tool_input;
-      const payload: Record<string, unknown> = {
-        toolName,
-        toolInput,
-        status,
-      };
-      derived.push(buildDerived("tool_call", payload));
+        typeof payload.toolName === "string" ? payload.toolName : "";
+      const toolCallId =
+        typeof payload.toolCallId === "string" ? payload.toolCallId : "";
+      const statusKey =
+        typeof payload.status === "string" ? payload.status : "";
+      if (!toolCallId && !toolName) {
+        return true;
+      }
+      const key = `${eventType}:${toolCallId || toolName}:${statusKey}`;
+      if (toolEventKeys.has(key)) {
+        return false;
+      }
+      toolEventKeys.add(key);
+      return true;
+    };
+
+    const buildToolPayload = (
+      primary: Record<string, unknown> | null,
+      fallback: Record<string, unknown> | null,
+      includeOutput: boolean,
+      statusOverride?: string | null
+    ): Record<string, unknown> => {
+      const sources = [primary, fallback];
+      const toolName = resolveStringFromSources(sources, [
+        "toolName",
+        "tool_name",
+        "name",
+      ]);
+      const toolCallId = resolveStringFromSources(sources, [
+        "toolCallId",
+        "tool_call_id",
+        "callId",
+        "id",
+      ]);
+      const toolInput = resolveValueFromSources(sources, [
+        "toolInput",
+        "tool_input",
+        "input",
+        "args",
+      ]);
+      const toolOutput = resolveValueFromSources(sources, [
+        "toolOutput",
+        "tool_output",
+        "output",
+        "result",
+      ]);
+      const durationMs = resolveNumberFromSources(sources, [
+        "durationMs",
+        "duration_ms",
+        "latencyMs",
+        "latency_ms",
+        "elapsedMs",
+        "elapsed_ms",
+      ]);
+      const errorMessage = resolveStringFromSources(sources, [
+        "error",
+        "errorMessage",
+        "message",
+      ]);
+      const errorStack = resolveStringFromSources(sources, [
+        "stack",
+        "trace",
+        "errorStack",
+        "error_trace",
+      ]);
+
+      const payload: Record<string, unknown> = {};
+      const normalizedToolStatus =
+        normalizedStatus === "streaming" ? "started" : normalizedStatus;
+      const statusValue =
+        statusOverride ?? normalizedToolStatus ?? (errorMessage ? "failed" : null);
+
+      if (toolName) payload.toolName = toolName;
+      if (toolCallId) payload.toolCallId = toolCallId;
+      if (statusValue) payload.status = statusValue;
+      if (toolInput !== undefined) payload.toolInput = toolInput;
+      if (includeOutput && toolOutput !== undefined) payload.toolOutput = toolOutput;
+      if (durationMs !== null) payload.durationMs = durationMs;
+      if (errorMessage) payload.error = errorMessage;
+      if (errorStack) payload.stack = errorStack;
+
+      return payload;
+    };
+
+    if (deltaType === "tool_call") {
+      const payload = buildToolPayload(delta, payloadRecord, false, normalizedStatus ?? "started");
+      if (registerToolEvent("tool_call", payload)) {
+        derived.push(buildDerived("tool_call", payload));
+      }
     }
 
     if (deltaType === "tool_result") {
-      const toolName =
-        resolveString(delta?.toolName) ??
-        resolveString(delta?.tool_name) ??
-        resolveString(payloadRecord.toolName) ??
-        resolveString(payloadRecord.tool_name);
-      const toolOutput =
-        delta?.toolOutput ??
-        delta?.tool_output ??
-        payloadRecord.toolOutput ??
-        payloadRecord.tool_output;
-      const payload: Record<string, unknown> = {
-        toolName,
-        toolOutput,
-        status,
-      };
-      derived.push(buildDerived("tool_result", payload));
+      const payload = buildToolPayload(delta, payloadRecord, true, normalizedStatus ?? "completed");
+      if (registerToolEvent("tool_result", payload)) {
+        derived.push(buildDerived("tool_result", payload));
+      }
+    }
+
+    const toolEntries: Record<string, unknown>[] = [];
+    const collectToolEntries = (source: unknown): void => {
+      if (!source) {
+        return;
+      }
+      if (Array.isArray(source)) {
+        source.forEach((entry) => collectToolEntries(entry));
+        return;
+      }
+      if (typeof source !== "object") {
+        return;
+      }
+      const record = source as Record<string, unknown>;
+      const nested =
+        (Array.isArray(record.entries) ? record.entries : null) ??
+        (Array.isArray(record.items) ? record.items : null) ??
+        (Array.isArray(record.calls) ? record.calls : null) ??
+        (Array.isArray(record.results) ? record.results : null);
+      if (nested) {
+        nested.forEach((entry) => collectToolEntries(entry));
+        return;
+      }
+      toolEntries.push(record);
+    };
+
+    collectToolEntries(payloadRecord.tool);
+    collectToolEntries(payloadRecord.toolCall);
+    collectToolEntries(payloadRecord.tool_call);
+    collectToolEntries(payloadRecord.toolResult);
+    collectToolEntries(payloadRecord.tool_result);
+    collectToolEntries(payloadRecord.toolCalls);
+    collectToolEntries(payloadRecord.tool_calls);
+    collectToolEntries(payloadRecord.toolResults);
+    collectToolEntries(payloadRecord.tool_results);
+
+    for (const entry of toolEntries) {
+      const entryStatus = normalizeStatus(
+        resolveStringField(entry, ["status", "state", "phase"])
+      );
+      const explicitType = resolveStringField(entry, ["type", "eventType"]);
+      const hasOutput =
+        resolveValueFromSources([entry], ["toolOutput", "tool_output", "output", "result"]) !==
+        undefined;
+      const hasInput =
+        resolveValueFromSources([entry], ["toolInput", "tool_input", "input", "args"]) !==
+        undefined;
+
+      let eventType: "tool_call" | "tool_result" | null = null;
+      if (explicitType) {
+        const normalized = explicitType.toLowerCase();
+        if (normalized.includes("result") || normalized.includes("output")) {
+          eventType = "tool_result";
+        } else if (normalized.includes("call") || normalized.includes("input")) {
+          eventType = "tool_call";
+        }
+      }
+
+      if (!eventType) {
+        if (entryStatus === "completed" || entryStatus === "failed") {
+          eventType = "tool_result";
+        } else if (entryStatus === "started" || entryStatus === "streaming") {
+          eventType = "tool_call";
+        } else if (hasOutput) {
+          eventType = "tool_result";
+        } else if (hasInput) {
+          eventType = "tool_call";
+        }
+      }
+
+      if (!eventType) {
+        continue;
+      }
+
+      const payload = buildToolPayload(
+        entry,
+        payloadRecord,
+        eventType === "tool_result",
+        entryStatus ?? normalizedStatus ?? (eventType === "tool_call" ? "started" : "completed")
+      );
+      if (registerToolEvent(eventType, payload)) {
+        derived.push(buildDerived(eventType, payload));
+      }
     }
 
     const thinkingText =
-      resolveString(payloadRecord.thinking) ??
-      resolveString(payloadRecord.thought) ??
-      resolveString(payloadRecord.reasoning) ??
-      resolveString(delta?.content);
+      resolveStringField(payloadRecord, ["thinking", "thought", "reasoning", "analysis"]) ??
+      resolveStringField(delta ?? {}, ["thinking", "thought", "reasoning", "analysis"]) ??
+      ((deltaType === "thinking" || deltaType === "reasoning") ? resolveString(delta?.content) : null);
+    const thinkingPhase =
+      resolveStringField(payloadRecord, ["phase", "reasoningPhase", "stage"]) ??
+      resolveStringField(delta ?? {}, ["phase", "reasoningPhase", "stage"]);
+    const thinkingConfidence = resolveNumberField(payloadRecord, ["confidence"]);
+
     const shouldEmitThinking =
-      deltaType === "thinking" || Boolean(thinkingText) || (status === "started" && !delta);
+      deltaType === "thinking" ||
+      deltaType === "reasoning" ||
+      Boolean(thinkingText) ||
+      (normalizedStatus === "started" && !delta);
     if (shouldEmitThinking) {
-      const payload: Record<string, unknown> = {
-        status,
-      };
+      const payload: Record<string, unknown> = {};
+      if (normalizedStatus) {
+        payload.status = normalizedStatus;
+      } else if (status) {
+        payload.status = status;
+      }
       if (thinkingText) {
         payload.thinking = thinkingText;
+      }
+      if (thinkingPhase) {
+        payload.phase = thinkingPhase;
+      }
+      if (thinkingConfidence !== null) {
+        payload.confidence = thinkingConfidence;
       }
       derived.push(buildDerived("thinking", payload));
     }
 
-    const errorMessage =
-      resolveString(payloadRecord.error) ??
-      resolveString(payloadRecord.errorMessage) ??
-      (status === "error" ? resolveString(payloadRecord.message) : null);
-    if (status === "error" || errorMessage) {
-      const payload: Record<string, unknown> = {
-        status,
-      };
-      if (errorMessage) {
-        payload.message = errorMessage;
+    const errorDetails = extractErrorDetails(payloadRecord, delta);
+    const hasError =
+      status === "error" ||
+      normalizedStatus === "failed" ||
+      Boolean(errorDetails.message || errorDetails.stack || errorDetails.code);
+    if (hasError) {
+      const payload: Record<string, unknown> = {};
+      if (normalizedStatus) {
+        payload.status = normalizedStatus;
+      } else if (status) {
+        payload.status = status;
+      } else {
+        payload.status = "error";
       }
+      if (errorDetails.message) payload.message = errorDetails.message;
+      if (errorDetails.stack) payload.stack = errorDetails.stack;
+      if (errorDetails.code) payload.code = errorDetails.code;
+      if (errorDetails.severity) payload.severity = errorDetails.severity;
+      if (errorDetails.recoverable !== undefined) {
+        payload.recoverable = errorDetails.recoverable;
+      }
+      if (errorDetails.context) payload.context = errorDetails.context;
       derived.push(buildDerived("error", payload));
     }
 
-    const inputTokens =
-      resolveNumber(payloadRecord.inputTokens) ??
-      resolveNumber(payloadRecord.input_tokens) ??
-      resolveNumber(summary?.inputTokens) ??
-      resolveNumber(summary?.input_tokens);
-    const outputTokens =
-      resolveNumber(payloadRecord.outputTokens) ??
-      resolveNumber(payloadRecord.output_tokens) ??
-      resolveNumber(summary?.outputTokens) ??
-      resolveNumber(summary?.output_tokens);
-    const durationMs =
-      resolveNumber(payloadRecord.durationMs) ??
-      resolveNumber(payloadRecord.duration_ms) ??
-      resolveNumber(summary?.durationMs) ??
-      resolveNumber(summary?.duration_ms);
-    if (inputTokens !== null || outputTokens !== null || durationMs !== null) {
-      const payload: Record<string, unknown> = {
-        status,
-      };
-      if (inputTokens !== null) payload.inputTokens = inputTokens;
-      if (outputTokens !== null) payload.outputTokens = outputTokens;
-      if (durationMs !== null) payload.durationMs = durationMs;
-      derived.push(buildDerived("token_usage", payload));
+    const tokenPayload = extractTokenUsagePayload(payloadRecord, summary);
+    if (tokenPayload) {
+      if (normalizedStatus && tokenPayload.status === undefined) {
+        tokenPayload.status = normalizedStatus;
+      } else if (status && tokenPayload.status === undefined) {
+        tokenPayload.status = status;
+      }
+      derived.push(buildDerived("token_usage", tokenPayload));
+    }
+
+    const sessionEvents = extractSessionEvents(payloadRecord, delta, baseEvent.sessionKey);
+    for (const sessionEvent of sessionEvents) {
+      const payload: Record<string, unknown> = { ...sessionEvent.payload };
+      if (normalizedStatus && payload.status === undefined) {
+        payload.status = normalizedStatus;
+      } else if (status && payload.status === undefined) {
+        payload.status = status;
+      }
+      derived.push(
+        buildDerived(sessionEvent.eventType, payload, sessionEvent.sessionKey)
+      );
+    }
+
+    const memoryOperations = extractMemoryOperations(payloadRecord, delta);
+    for (const operation of memoryOperations) {
+      const payload: Record<string, unknown> = { ...operation };
+      if (normalizedStatus && payload.status === undefined) {
+        payload.status = normalizedStatus;
+      } else if (status && payload.status === undefined) {
+        payload.status = status;
+      }
+      derived.push(buildDerived("memory_operation", payload));
     }
 
     const diagnosticEvents = extractDiagnosticEvents(payloadRecord, delta);
     for (const diagnostic of diagnosticEvents) {
       const payload: Record<string, unknown> = { ...diagnostic.payload };
-      if (status && payload.status === undefined) {
+      if (normalizedStatus && payload.status === undefined) {
+        payload.status = normalizedStatus;
+      } else if (status && payload.status === undefined) {
         payload.status = status;
       }
       derived.push(buildDerived(diagnostic.eventType, payload));
@@ -1206,7 +1962,9 @@ class Bridge {
 
     return diagnostics.map((diagnostic) => {
       const payload: Record<string, unknown> = { ...diagnostic.payload };
-      if (status && payload.status === undefined) {
+      if (normalizedStatus && payload.status === undefined) {
+        payload.status = normalizedStatus;
+      } else if (status && payload.status === undefined) {
         payload.status = status;
       }
       return buildDerived(diagnostic.eventType, payload);

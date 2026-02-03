@@ -456,4 +456,484 @@ describe("events functions", () => {
     expect(invalidJson.status).toBe(400);
     process.env.BRIDGE_SECRET = originalSecret;
   });
+
+  describe("new event types", () => {
+    it("summarizes session_start events", async () => {
+      const ctx = createMockCtx();
+      await ctx.db.insert("events", {
+        eventId: "evt_session_start",
+        eventType: "session_start",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: { sessionKey: "session_1", agentId: "agent_1" },
+        receivedAt: Date.now(),
+      });
+
+      const recent = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
+      const sessionStart = recent.find((e: { type: string }) => e.type === "session_start");
+
+      expect(sessionStart).toBeDefined();
+      expect(sessionStart?.content).toContain("Session started");
+      expect(sessionStart?.content).toContain("session_1");
+    });
+
+    it("summarizes session_end events with duration", async () => {
+      const ctx = createMockCtx();
+      await ctx.db.insert("events", {
+        eventId: "evt_session_end",
+        eventType: "session_end",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        payload: { sessionKey: "session_1", durationMs: 5500, messageCount: 15 },
+        receivedAt: Date.now(),
+      });
+
+      const recent = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
+      const sessionEnd = recent.find((e: { type: string }) => e.type === "session_end");
+
+      expect(sessionEnd).toBeDefined();
+      expect(sessionEnd?.content).toContain("Session ended");
+      expect(sessionEnd?.content).toContain("5.5s");
+      expect(sessionEnd?.content).toContain("15 messages");
+    });
+
+    it("summarizes memory_operation events", async () => {
+      const ctx = createMockCtx();
+      await ctx.db.insert("events", {
+        eventId: "evt_memory_read",
+        eventType: "memory_operation",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: { operation: "read", memoryType: "working", key: "context", success: true },
+        receivedAt: Date.now(),
+      });
+      await ctx.db.insert("events", {
+        eventId: "evt_memory_write_fail",
+        eventType: "memory_operation",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        payload: { operation: "write", memoryType: "long_term", success: false },
+        receivedAt: Date.now(),
+      });
+
+      const recent = await asHandler(events.listRecent)._handler(ctx, { limit: 10 });
+      const memoryRead = recent.find(
+        (e: { type: string; content: string }) =>
+          e.type === "memory_operation" && e.content.includes("read")
+      );
+      const memoryWriteFail = recent.find(
+        (e: { type: string; content: string }) =>
+          e.type === "memory_operation" && e.content.includes("FAILED")
+      );
+
+      expect(memoryRead?.content).toContain("Memory read");
+      expect(memoryRead?.content).toContain("working");
+      expect(memoryWriteFail?.content).toContain("Memory write");
+      expect(memoryWriteFail?.content).toContain("[FAILED]");
+    });
+
+    it("includes new event types in countsByType", async () => {
+      const ctx = createMockCtx();
+      await ctx.db.insert("events", {
+        eventId: "evt_session_start_1",
+        eventType: "session_start",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: {},
+        receivedAt: Date.now(),
+      });
+      await ctx.db.insert("events", {
+        eventId: "evt_memory_op_1",
+        eventType: "memory_operation",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        payload: { operation: "read" },
+        receivedAt: Date.now(),
+      });
+
+      const counts = await asHandler(events.countsByType)._handler(ctx, {});
+
+      expect(counts.session_start).toBe(1);
+      expect(counts.memory_operation).toBe(1);
+    });
+
+    it("routes new event types through ingest", async () => {
+      const originalSecret = process.env.BRIDGE_SECRET;
+      process.env.BRIDGE_SECRET = "";
+      const ctx = { runMutation: vi.fn(async () => {}) };
+      const payload = [
+        {
+          eventId: "evt_session_start",
+          eventType: "session_start",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 1,
+          payload: { sessionKey: "session_1" },
+        },
+        {
+          eventId: "evt_session_end",
+          eventType: "session_end",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 2,
+          payload: { sessionKey: "session_1", durationMs: 1000 },
+        },
+        {
+          eventId: "evt_thinking",
+          eventType: "thinking",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 3,
+          payload: { content: "Analyzing the problem..." },
+        },
+        {
+          eventId: "evt_memory",
+          eventType: "memory_operation",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 4,
+          payload: { operation: "write", memoryType: "working" },
+        },
+      ];
+
+      const response = await asHttpAction(events.ingest)(
+        ctx as never,
+        new Request("https://example.test/ingest", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.startSession,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.endSession,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.incrementSessionThinkingCount,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.recordMemoryOperation,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      process.env.BRIDGE_SECRET = originalSecret;
+    });
+
+    it("routes tool and error events to session metrics", async () => {
+      const originalSecret = process.env.BRIDGE_SECRET;
+      process.env.BRIDGE_SECRET = "";
+      const ctx = { runMutation: vi.fn(async () => {}) };
+      const payload = [
+        {
+          eventId: "evt_tool",
+          eventType: "tool_call",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 1,
+          payload: { toolName: "search", durationMs: 100 },
+        },
+        {
+          eventId: "evt_error",
+          eventType: "error",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 2,
+          payload: { message: "Something went wrong" },
+        },
+        {
+          eventId: "evt_tokens",
+          eventType: "token_usage",
+          agentId: "agent_1",
+          sessionKey: "session_1",
+          timestamp: new Date().toISOString(),
+          sequence: 3,
+          payload: { inputTokens: 100, outputTokens: 50 },
+        },
+      ];
+
+      const response = await asHttpAction(events.ingest)(
+        ctx as never,
+        new Request("https://example.test/ingest", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.incrementSessionToolCount,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.incrementSessionErrorCount,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      expect(ctx.runMutation).toHaveBeenCalledWith(
+        internal.events.addSessionTokenUsage,
+        expect.objectContaining({ sessionKey: "session_1" })
+      );
+      process.env.BRIDGE_SECRET = originalSecret;
+    });
+  });
+
+  describe("session metrics", () => {
+    it("creates session metrics on session start", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_new",
+        startedAt: now,
+      });
+
+      const metrics = await asHandler(events.getSessionMetrics)._handler(ctx, {
+        sessionKey: "session_new",
+      });
+
+      expect(metrics).toBeDefined();
+      expect(metrics?.sessionKey).toBe("session_new");
+      expect(metrics?.agentId).toBe("agent_1");
+      expect(metrics?.status).toBe("active");
+      expect(metrics?.messageCount).toBe(0);
+      expect(metrics?.toolCallCount).toBe(0);
+      expect(metrics?.errorCount).toBe(0);
+    });
+
+    it("updates session metrics on session end", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_end_test",
+        startedAt: now - 5000,
+      });
+
+      await asHandler(events.endSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_end_test",
+        endedAt: now,
+        payload: { durationMs: 5000 },
+      });
+
+      const metrics = await asHandler(events.getSessionMetrics)._handler(ctx, {
+        sessionKey: "session_end_test",
+      });
+
+      expect(metrics?.status).toBe("completed");
+      expect(metrics?.durationMs).toBe(5000);
+      expect(metrics?.endedAt).toBe(now);
+    });
+
+    it("increments tool call count and tracks duration", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_tools",
+        startedAt: now,
+      });
+
+      await asHandler(events.incrementSessionToolCount)._handler(ctx, {
+        sessionKey: "session_tools",
+        payload: { toolName: "search", durationMs: 100 },
+      });
+
+      await asHandler(events.incrementSessionToolCount)._handler(ctx, {
+        sessionKey: "session_tools",
+        payload: { toolName: "read", durationMs: 200 },
+      });
+
+      const metrics = await asHandler(events.getSessionMetrics)._handler(ctx, {
+        sessionKey: "session_tools",
+      });
+
+      expect(metrics?.toolCallCount).toBe(2);
+      expect(metrics?.maxToolDurationMs).toBe(200);
+      expect(metrics?.avgToolDurationMs).toBe(150);
+    });
+
+    it("increments error and thinking counts", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_counts",
+        startedAt: now,
+      });
+
+      await asHandler(events.incrementSessionErrorCount)._handler(ctx, {
+        sessionKey: "session_counts",
+      });
+      await asHandler(events.incrementSessionErrorCount)._handler(ctx, {
+        sessionKey: "session_counts",
+      });
+      await asHandler(events.incrementSessionThinkingCount)._handler(ctx, {
+        sessionKey: "session_counts",
+      });
+
+      const metrics = await asHandler(events.getSessionMetrics)._handler(ctx, {
+        sessionKey: "session_counts",
+      });
+
+      expect(metrics?.errorCount).toBe(2);
+      expect(metrics?.thinkingEventCount).toBe(1);
+    });
+
+    it("accumulates token usage", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_tokens",
+        startedAt: now,
+      });
+
+      await asHandler(events.addSessionTokenUsage)._handler(ctx, {
+        sessionKey: "session_tokens",
+        payload: { inputTokens: 100, outputTokens: 50 },
+      });
+      await asHandler(events.addSessionTokenUsage)._handler(ctx, {
+        sessionKey: "session_tokens",
+        payload: { inputTokens: 200, outputTokens: 100, costUsd: 0.01 },
+      });
+
+      const metrics = await asHandler(events.getSessionMetrics)._handler(ctx, {
+        sessionKey: "session_tokens",
+      });
+
+      expect(metrics?.totalInputTokens).toBe(300);
+      expect(metrics?.totalOutputTokens).toBe(150);
+      expect(metrics?.estimatedCostUsd).toBe(0.01);
+    });
+
+    it("records memory operations", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_1",
+        sessionKey: "session_memory",
+        startedAt: now,
+      });
+
+      await asHandler(events.recordMemoryOperation)._handler(ctx, {
+        sessionKey: "session_memory",
+        payload: { operation: "read" },
+      });
+      await asHandler(events.recordMemoryOperation)._handler(ctx, {
+        sessionKey: "session_memory",
+        payload: { operation: "write" },
+      });
+      await asHandler(events.recordMemoryOperation)._handler(ctx, {
+        sessionKey: "session_memory",
+        payload: { operation: "sync" },
+      });
+
+      const metrics = await asHandler(events.getSessionMetrics)._handler(ctx, {
+        sessionKey: "session_memory",
+      });
+
+      expect(metrics?.memoryReadCount).toBe(1);
+      expect(metrics?.memoryWriteCount).toBe(2);
+    });
+
+    it("lists session metrics by agent", async () => {
+      const ctx = createMockCtx();
+      const now = Date.now();
+
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_list_1",
+        sessionKey: "session_list_1",
+        startedAt: now - 2000,
+      });
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_list_1",
+        sessionKey: "session_list_2",
+        startedAt: now - 1000,
+      });
+      await asHandler(events.startSession)._handler(ctx, {
+        agentId: "agent_list_2",
+        sessionKey: "session_list_3",
+        startedAt: now,
+      });
+
+      const agent1Sessions = await asHandler(events.listSessionMetrics)._handler(ctx, {
+        agentId: "agent_list_1",
+      });
+
+      expect(agent1Sessions).toHaveLength(2);
+      expect(agent1Sessions.every((s: { agentId: string }) => s.agentId === "agent_list_1")).toBe(true);
+    });
+  });
+
+  describe("store with denormalized fields", () => {
+    it("extracts toolName from tool_call events", async () => {
+      const ctx = createMockCtx();
+      await asHandler(events.store)._handler(ctx, {
+        eventId: "evt_tool_denorm",
+        eventType: "tool_call",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: { toolName: "search", durationMs: 150 },
+      });
+
+      const stored = await ctx.db
+        .query("events")
+        .withIndex("by_event_id", (q: { eq: (field: string, value: string) => unknown }) => q.eq("eventId", "evt_tool_denorm"))
+        .first();
+
+      expect(stored?.toolName).toBe("search");
+      expect(stored?.durationMs).toBe(150);
+    });
+
+    it("extracts errorCode from error events", async () => {
+      const ctx = createMockCtx();
+      await asHandler(events.store)._handler(ctx, {
+        eventId: "evt_error_denorm",
+        eventType: "error",
+        agentId: "agent_1",
+        sessionKey: "session_1",
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        payload: { message: "Failed", code: "ERR_TIMEOUT" },
+      });
+
+      const stored = await ctx.db
+        .query("events")
+        .withIndex("by_event_id", (q: { eq: (field: string, value: string) => unknown }) => q.eq("eventId", "evt_error_denorm"))
+        .first();
+
+      expect(stored?.errorCode).toBe("ERR_TIMEOUT");
+    });
+  });
 });
