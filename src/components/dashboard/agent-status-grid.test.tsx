@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
 import type { AgentSummary } from "@/lib/agent-types";
 
@@ -14,15 +14,18 @@ vi.mock("@/lib/realtime", () => ({
 
 vi.mock("convex/react", () => ({
   useAction: vi.fn(),
+  useQuery: vi.fn(),
 }));
 
 const useActionMock = vi.mocked(useAction);
+const useQueryMock = vi.mocked(useQuery);
 
 describe("AgentStatusGrid", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T12:00:00Z"));
     useActionMock.mockReset();
+    useQueryMock.mockReset();
   });
 
   afterEach(() => {

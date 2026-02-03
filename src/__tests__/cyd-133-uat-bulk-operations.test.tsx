@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { AgentStatusGrid } from "@/components/agents/agent-status-grid";
 import type { AgentSummary } from "@/lib/agent-types";
 
@@ -14,9 +14,11 @@ vi.mock("@/lib/realtime", () => ({
 
 vi.mock("convex/react", () => ({
   useAction: vi.fn(),
+  useQuery: vi.fn(),
 }));
 
 const useActionMock = vi.mocked(useAction);
+const useQueryMock = vi.mocked(useQuery);
 
 const agents: AgentSummary[] = [
   {
@@ -48,6 +50,7 @@ describe("CYD-133 UAT - Bulk Operations", () => {
       isLoading: false,
     });
     useActionMock.mockReset();
+    useQueryMock.mockReset();
   });
 
   it("applies bulk pause to selected agents and shows results", async () => {

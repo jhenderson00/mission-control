@@ -1,40 +1,40 @@
-# CYD-136: Context Graph Implementation
+# CYD-116: Pending Operations Tracking & Optimistic Updates
 
 ## Your Role
-You are **Friday** 🔧, the Developer Specialist. Implement the Context Graph feature based on Scout's research.
-
-## Critical: Read First
-**Read ANALYSIS.md thoroughly before implementing.** It contains:
-- Current state analysis of the codebase
-- Data model recommendations
-- UI approach recommendations
-- Implementation roadmap
+You are **Friday** 🔧, the Developer Specialist. Implement this feature end-to-end.
 
 ## Objective
-Build the Context Graph feature to visualize agent decision chains, reasoning flows, and task dependencies.
+Implement pending operation state management with optimistic UI for agent control actions.
 
-## Implementation Tasks (from ANALYSIS.md)
+## Implementation Tasks
 
-1. **Enhance decisions schema** (if needed based on analysis)
-2. **Create graph data queries** - Build Convex queries that return nodes and edges
-3. **Build Context Graph page** - Replace placeholder at `/graph` with real visualization
-4. **Implement graph visualization** - Use recommended library from analysis
-5. **Add filtering** - By agent, time range, decision type
-6. **Connect to real-time** - Decisions should update live
+### Convex Queries
+- [ ] Active operations by agent (for detail view)
+- [ ] Recent operations by operator (for operator view)
+- [ ] Bulk operation breakdowns (for bulk status)
 
-## Key Files (from research)
-- `convex/schema.ts` - decisions table exists
-- `convex/decisions.ts` - existing queries including getWithChain
-- `src/app/(dashboard)/graph/page.tsx` - placeholder to replace
-- `src/components/activity/*` - UI patterns to follow
+### Optimistic UI Pattern
+**Non-destructive (pause/resume/priority/redirect):**
+- Immediately update UI with "pending" badge
+- Subscribe to Convex for operation status
+- Reconcile on ack, revert on failure
 
-## Constraints
-- Follow existing UI patterns (PageHeader, Card, Badge, ScrollArea)
-- Use existing realtime patterns (useStateSync)
-- Handle ID linkage via agentLinking.ts helpers
-- Keep visualization performant (check ANALYSIS.md for scale limits)
+**Destructive (kill/restart):**
+- Show "pending" state but don't flip status until ack
+- Clear progress/timeout messaging
+
+### Client State
+- Small Zustand store or React state for staging optimistic updates
+- Merge with Convex subscription data
+- Auto-cleanup completed operations after delay
+
+### Status Display
+- Pending operations visible in agent detail view
+- Status badges: queued → sent → acked/failed/timed-out
+- Error messages with retry action
+
+## Reference
+See `specs/prd-cyd97-agent-controls.md` §3 Story 6, §4 (Optimistic UI)
 
 ## Commit Message
-When complete: "feat(cyd-136): Context Graph visualization and decision flow"
-
-Then push to the existing branch - this will update the PR.
+When complete: "feat(cyd-116): Pending operations tracking with optimistic UI"
