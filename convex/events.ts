@@ -1266,9 +1266,10 @@ export const listSessionMetrics = query({
     }
 
     if (args.status) {
+      const status = args.status;
       return await ctx.db
         .query("sessionMetrics")
-        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
         .take(limit);
     }
