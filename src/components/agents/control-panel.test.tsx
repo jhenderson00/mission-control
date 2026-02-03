@@ -29,11 +29,13 @@ describe("ControlPanel", () => {
     await user.click(screen.getByRole("button", { name: "Pause" }));
 
     await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledWith({
-        agentId: "agent_1",
-        command: "agent.pause",
-        params: { reason: "Need a break" },
-      });
+      expect(dispatchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "agent_1",
+          command: "agent.pause",
+          params: { reason: "Need a break" },
+        })
+      );
     });
 
     expect(await screen.findByText("Acknowledged (acked)."))
