@@ -90,6 +90,7 @@ export type ToolCallPayload = {
   status: "started" | "completed" | "failed";
   durationMs?: number;
   error?: string;
+  stack?: string;
 };
 
 /**
@@ -108,10 +109,13 @@ export type ErrorEventPayload = {
  * Agent thinking/reasoning event payload
  */
 export type ThinkingEventPayload = {
-  content: string;
+  content?: string;
+  thinking?: string;
+  reasoning?: string;
   thinkingId?: string;
-  phase?: "planning" | "analyzing" | "deciding" | "reflecting";
+  phase?: string;
   confidence?: number;
+  status?: string;
 };
 
 /**
@@ -145,12 +149,12 @@ export type SessionEventPayload = {
  * Memory operation event payload
  */
 export type MemoryOperationPayload = {
-  operation: "read" | "write" | "update" | "delete" | "sync";
-  memoryType: "working" | "long_term" | "context" | "episodic";
+  operation?: "read" | "write" | "update" | "delete" | "sync";
+  memoryType?: "working" | "long_term" | "context" | "episodic";
   key?: string;
   sizeBytes?: number;
   durationMs?: number;
-  success: boolean;
+  success?: boolean;
   error?: string;
 };
 

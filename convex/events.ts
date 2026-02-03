@@ -451,6 +451,7 @@ function isDiagnosticRelevant(eventType: string): boolean {
     eventType === "tool_result" ||
     eventType === "error" ||
     eventType === "token_usage" ||
+    eventType === "memory_operation" ||
     eventType === "health"
   );
 }

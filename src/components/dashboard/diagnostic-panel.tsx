@@ -110,6 +110,7 @@ const typeTone: Record<string, string> = {
   token_usage: "border-teal-500/30 bg-teal-500/10 text-teal-200",
   error: "border-red-500/30 bg-red-500/10 text-red-200",
   health: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+  memory_operation: "border-violet-500/30 bg-violet-500/10 text-violet-200",
 };
 
 function formatEventType(eventType: string): string {
