@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { AgentStatusGrid } from "@/components/dashboard/agent-status-grid";
+import { DiagnosticPanel } from "@/components/dashboard/diagnostic-panel";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -113,6 +114,7 @@ type CriticalQueueItem = {
 export default function DashboardPage() {
   const hasConvex = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
   const agentCounts = useQuery(api.agents.statusCounts, {});
+  const presenceCounts = useQuery(api.agents.presenceCounts, {});
   const taskCounts = useQuery(api.tasks.statusCounts, {});
   const pendingCount = useQuery(api.decisions.pendingCount, {});
   const alertCounts = useQuery(api.events.countsByType, {
@@ -127,10 +129,10 @@ export default function DashboardPage() {
   });
 
   const activeAgents = hasConvex
-    ? agentCounts?.active
+    ? presenceCounts?.active ?? agentCounts?.active
     : fallbackAgentCounts.active;
   const totalAgents = hasConvex
-    ? agentCounts?.total
+    ? presenceCounts?.total ?? agentCounts?.total
     : fallbackAgentCounts.total;
   const queuedTasks = hasConvex
     ? taskCounts?.queued
@@ -251,6 +253,8 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <DiagnosticPanel />
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <Card className="border-border/60 bg-card/40">

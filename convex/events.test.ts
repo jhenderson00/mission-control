@@ -95,6 +95,75 @@ describe("events functions", () => {
     expect(filtered[0].type).toBe("heartbeat");
   });
 
+  it("lists diagnostic events with derived metadata", async () => {
+    const ctx = createMockCtx();
+    await ctx.db.insert("events", {
+      eventId: "evt_chat",
+      eventType: "chat",
+      agentId: "agent_1",
+      sessionKey: "session_1",
+      timestamp: new Date().toISOString(),
+      sequence: 1,
+      payload: { content: "ignore" },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_tool_result",
+      eventType: "tool_result",
+      agentId: "agent_2",
+      sessionKey: "session_2",
+      timestamp: new Date().toISOString(),
+      sequence: 2,
+      payload: { toolName: "search", durationMs: 120, status: "ok" },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_error",
+      eventType: "error",
+      agentId: "agent_3",
+      sessionKey: "session_3",
+      timestamp: new Date().toISOString(),
+      sequence: 3,
+      payload: { message: "Boom" },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_diag",
+      eventType: "diagnostic.warning",
+      agentId: "agent_4",
+      sessionKey: "session_4",
+      timestamp: new Date().toISOString(),
+      sequence: 4,
+      payload: { level: "warning", message: "Latency high" },
+      receivedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      eventId: "evt_health",
+      eventType: "health",
+      agentId: "system",
+      sessionKey: "system",
+      timestamp: new Date().toISOString(),
+      sequence: 5,
+      payload: { ok: false },
+      receivedAt: Date.now(),
+    });
+
+    const diagnostics = await asHandler(events.listDiagnostics)._handler(ctx, { limit: 10 });
+
+    expect(diagnostics.some((event) => event.eventType === "chat")).toBe(false);
+
+    const tool = diagnostics.find((event) => event.eventType === "tool_result");
+    expect(tool?.toolName).toBe("search");
+    expect(tool?.durationMs).toBe(120);
+    expect(tool?.success).toBe(true);
+
+    const diag = diagnostics.find((event) => event.eventType === "diagnostic.warning");
+    expect(diag?.level).toBe("warning");
+
+    const health = diagnostics.find((event) => event.eventType === "health");
+    expect(health?.level).toBe("error");
+  });
+
   it("counts events by type with since filter", async () => {
     const ctx = createMockCtx();
     await ctx.db.insert("events", {

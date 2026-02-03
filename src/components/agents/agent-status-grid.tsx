@@ -28,6 +28,7 @@ import type { AgentStatusRecord } from "@/lib/realtime";
 type AgentCardProps = {
   agent: AgentSummary;
   statusRecord?: AgentStatusRecord;
+  isPresenceLoading: boolean;
   isSelected: boolean;
   onSelectionChange: (agentId: string, isSelected: boolean) => void;
 };
@@ -103,6 +104,7 @@ function ProgressBar({ status }: { status: AgentStatus }): React.ReactElement {
 function AgentCard({
   agent,
   statusRecord,
+  isPresenceLoading,
   isSelected,
   onSelectionChange,
 }: AgentCardProps): React.ReactElement {
@@ -110,13 +112,16 @@ function AgentCard({
   const config = statusConfig[agent.status];
   const StatusIcon = config.icon;
   const checkboxId = `agent-select-${agent._id}`;
-  const presenceStatus = statusRecord?.status;
+  const presenceStatus =
+    statusRecord?.status ?? (isPresenceLoading ? undefined : "offline");
   const workingMemory = statusRecord?.workingMemory;
   const isBusy = presenceStatus === "busy";
   const lastActivity = statusRecord?.lastActivity ?? statusRecord?.lastHeartbeat;
   const activityLabel = lastActivity
     ? `Last activity ${formatRelativeTime(lastActivity, "just now")}`
-    : formatDuration(agent.startedAt, "Idle");
+    : presenceStatus === "offline"
+      ? "Offline"
+      : formatDuration(agent.startedAt, "Idle");
   const currentTaskLabel =
     isBusy && workingMemory?.currentTask
       ? workingMemory.currentTask
@@ -244,7 +249,9 @@ export function AgentStatusGrid({
   className,
 }: AgentStatusGridProps): React.ReactElement {
   const agentIds = useMemo(() => agents.map((agent) => agent._id), [agents]);
-  const { statusByAgent } = useAgentStatus({ agentIds });
+  const { statusByAgent, isLoading: isPresenceLoading } = useAgentStatus({
+    agentIds,
+  });
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -453,6 +460,7 @@ export function AgentStatusGrid({
                   key={agent._id}
                   agent={agent}
                   statusRecord={statusRecord}
+                  isPresenceLoading={isPresenceLoading}
                   isSelected={selectedAgentIds.has(agent._id)}
                   onSelectionChange={handleSelectionChange}
                 />
@@ -475,6 +483,7 @@ export function AgentStatusGrid({
                   key={agent._id}
                   agent={agent}
                   statusRecord={statusRecord}
+                  isPresenceLoading={isPresenceLoading}
                   isSelected={selectedAgentIds.has(agent._id)}
                   onSelectionChange={handleSelectionChange}
                 />
