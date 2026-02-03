@@ -172,6 +172,63 @@ function uniqueInOrder(values: Array<string | null | undefined>): string[] {
   return result;
 }
 
+const ORPHAN_AGENT_NAME = "unknown";
+
+function shouldIncludeAgent(
+  agent: Pick<Doc<"agents">, "name" | "bridgeAgentId">
+): boolean {
+  const name = typeof agent.name === "string" ? agent.name.trim() : "";
+  return (name.length > 0 && name !== ORPHAN_AGENT_NAME) || Boolean(agent.bridgeAgentId);
+}
+
+function isOrphanAgent(
+  agent: Pick<Doc<"agents">, "name" | "bridgeAgentId">
+): boolean {
+  return !shouldIncludeAgent(agent);
+}
+
+function filterVisibleAgents(agents: Array<Doc<"agents">>): Array<Doc<"agents">> {
+  return agents.filter(shouldIncludeAgent);
+}
+
+async function filterVisibleStatuses(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  statuses: Array<Doc<"agentStatus">>
+): Promise<Array<Doc<"agentStatus">>> {
+  if (statuses.length === 0) {
+    return statuses;
+  }
+
+  const normalizedIds = uniqueInOrder(
+    statuses
+      .map((status) => ctx.db.normalizeId("agents", status.agentId))
+      .filter((id): id is Id<"agents"> => Boolean(id))
+  );
+
+  if (normalizedIds.length === 0) {
+    return statuses;
+  }
+
+  const agents = await Promise.all(
+    normalizedIds.map((agentId) => ctx.db.get(agentId))
+  );
+  const visibleIds = new Set(
+    agents
+      .filter((agent): agent is Doc<"agents"> => Boolean(agent))
+      .filter(shouldIncludeAgent)
+      .map((agent) => agent._id)
+  );
+
+  return statuses.filter((status) => {
+    const normalized = ctx.db.normalizeId("agents", status.agentId);
+    if (!normalized) {
+      return true;
+    }
+    return visibleIds.has(normalized);
+  });
+}
+
 async function upsertStatus(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctx: any,
@@ -323,13 +380,15 @@ export const list = query({
   handler: async (ctx, args) => {
     if (args.status) {
       const status = args.status;
-      return await ctx.db
+      const agents = await ctx.db
         .query("agents")
         .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
         .collect();
+      return filterVisibleAgents(agents);
     }
-    return await ctx.db.query("agents").order("desc").collect();
+    const agents = await ctx.db.query("agents").order("desc").collect();
+    return filterVisibleAgents(agents);
   },
 });
 
@@ -614,7 +673,8 @@ export const listStatus = query({
         return status;
       });
 
-      return selectLatestStatus(mapped);
+      const filtered = await filterVisibleStatuses(ctx, mapped);
+      return selectLatestStatus(filtered);
     }
 
     const statuses = await ctx.db.query("agentStatus").collect();
@@ -631,7 +691,17 @@ export const listStatus = query({
     }
 
     if (bridgeToConvex.size === 0) {
-      return selectLatestStatus(statuses);
+      const visibleAgentIds = new Set(
+        filterVisibleAgents(agents).map((agent) => agent._id)
+      );
+      const filtered = statuses.filter((status) => {
+        const normalized = ctx.db.normalizeId("agents", status.agentId);
+        if (!normalized) {
+          return true;
+        }
+        return visibleAgentIds.has(normalized);
+      });
+      return selectLatestStatus(filtered);
     }
 
     const mapped = statuses.map((status) => {
@@ -642,7 +712,18 @@ export const listStatus = query({
       return status;
     });
 
-    return selectLatestStatus(mapped);
+    const visibleAgentIds = new Set(
+      filterVisibleAgents(agents).map((agent) => agent._id)
+    );
+    const filtered = mapped.filter((status) => {
+      const normalized = ctx.db.normalizeId("agents", status.agentId);
+      if (!normalized) {
+        return true;
+      }
+      return visibleAgentIds.has(normalized);
+    });
+
+    return selectLatestStatus(filtered);
   },
 });
 
@@ -1281,6 +1362,34 @@ export const remove = mutation({
   args: { id: v.id("agents") },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
+  },
+});
+
+/**
+ * Remove orphaned agents with no name or "unknown" name and no bridge id.
+ */
+export const cleanupOrphans = mutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<{
+    deleted: number;
+    deletedIds: Array<Id<"agents">>;
+  }> => {
+    const agents = await ctx.db.query("agents").collect();
+    const orphans = agents.filter(isOrphanAgent);
+    if (args.dryRun) {
+      return {
+        deleted: 0,
+        deletedIds: orphans.map((agent) => agent._id),
+      };
+    }
+
+    await Promise.all(orphans.map((agent) => ctx.db.delete(agent._id)));
+    return {
+      deleted: orphans.length,
+      deletedIds: orphans.map((agent) => agent._id),
+    };
   },
 });
 
