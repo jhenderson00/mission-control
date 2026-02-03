@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatRelativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { HeartbeatIndicator } from "@/components/agents/heartbeat-indicator";
 import { BulkActionBar } from "@/components/agents/bulk-action-bar";
 import { useAgentStatus } from "@/lib/realtime";
@@ -111,7 +112,6 @@ function AgentCard({
   const TypeIcon = typeIcons[agent.type];
   const config = statusConfig[agent.status];
   const StatusIcon = config.icon;
-  const checkboxId = `agent-select-${agent._id}`;
   const presenceStatus =
     statusRecord?.status ?? (isPresenceLoading ? undefined : "offline");
   const workingMemory = statusRecord?.workingMemory;
@@ -140,25 +140,21 @@ function AgentCard({
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
-              <label
-                htmlFor={checkboxId}
+              <div
                 className="flex h-11 w-11 items-center justify-center rounded-lg border border-transparent transition hover:border-border/60 hover:bg-muted/30"
                 data-selection-control="true"
                 onClick={(event) => {
                   event.stopPropagation();
                 }}
               >
-                <input
-                  id={checkboxId}
-                  type="checkbox"
+                <Checkbox
                   checked={isSelected}
-                  onChange={(event) =>
-                    onSelectionChange(agent._id, event.target.checked)
+                  onCheckedChange={(checked) =>
+                    onSelectionChange(agent._id, checked === true)
                   }
                   aria-label={`Select ${agent.name}`}
-                  className="h-5 w-5 rounded border-border/60 bg-background/70 text-primary accent-primary"
                 />
-              </label>
+              </div>
               <div
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-lg",
@@ -255,7 +251,6 @@ export function AgentStatusGrid({
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
-  const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const agentIdSet = new Set(agentIds);
@@ -309,12 +304,6 @@ export function AgentStatusGrid({
   const selectedCount = selectedAgentIds.size;
   const isAllSelected = totalAgents > 0 && selectedCount === totalAgents;
   const isPartiallySelected = selectedCount > 0 && selectedCount < totalAgents;
-
-  useEffect(() => {
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = isPartiallySelected;
-    }
-  }, [isPartiallySelected]);
 
   useEffect(() => {
     if (totalAgents === 0) {
@@ -416,22 +405,15 @@ export function AgentStatusGrid({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <label
-            htmlFor="agent-select-all"
-            className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/40"
-          >
-            <input
-              ref={selectAllRef}
-              id="agent-select-all"
-              type="checkbox"
-              checked={isAllSelected}
-              onChange={(event) => handleSelectAll(event.target.checked)}
-              aria-checked={isPartiallySelected ? "mixed" : isAllSelected}
+          <div className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted/40">
+            <Checkbox
+              checked={isPartiallySelected ? "indeterminate" : isAllSelected}
+              onCheckedChange={(checked) => handleSelectAll(checked === true)}
+              aria-label="Select all"
               disabled={totalAgents === 0}
-              className="h-5 w-5 rounded border-border/60 bg-background/70 text-primary accent-primary"
             />
             <span>Select all</span>
-          </label>
+          </div>
           <span>
             {selectedCount} of {totalAgents} selected
           </span>

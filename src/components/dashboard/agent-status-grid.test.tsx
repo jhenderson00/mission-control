@@ -105,9 +105,12 @@ describe("AgentStatusGrid", () => {
     render(<AgentStatusGrid agents={agents} />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("checkbox", { name: "Select Alpha" }));
-      fireEvent.click(screen.getByRole("checkbox", { name: "Select Beta" }));
-      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+      fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    });
+
+    const pauseButton = screen.getByRole("button", { name: "Pause" });
+    await act(async () => {
+      fireEvent.click(pauseButton);
     });
 
     expect(dispatchMock).toHaveBeenCalledWith(

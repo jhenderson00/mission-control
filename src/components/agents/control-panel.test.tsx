@@ -134,8 +134,8 @@ describe("ControlPanel", () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(
-      screen.getByPlaceholderText("Type KILL Alpha or CONFIRM"),
-      "KILL Alpha"
+      screen.getByPlaceholderText("Type CONFIRM to proceed"),
+      "CONFIRM"
     );
 
     expect(confirmButton).toBeEnabled();
@@ -161,8 +161,8 @@ describe("ControlPanel", () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(
-      screen.getByPlaceholderText("Type RESTART Alpha or CONFIRM"),
-      "RESTART Alpha"
+      screen.getByPlaceholderText("Type CONFIRM to proceed"),
+      "CONFIRM"
     );
 
     expect(confirmButton).toBeEnabled();
