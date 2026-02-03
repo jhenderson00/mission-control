@@ -165,6 +165,85 @@ describe("controls", () => {
     expect(result.bridgeStatus).toBe("accepted");
   });
 
+  it("dispatches all supported commands with validated params", async () => {
+    const { ctx } = createActionCtx();
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockImplementation(async (_url, init) => {
+      const body = init?.body ? JSON.parse(init.body as string) : {};
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          requestId: body.requestId ?? "req_auto",
+          status: "accepted",
+        }),
+      } as Response;
+    });
+
+    const cases = [
+      {
+        command: "agent.pause",
+        params: { reason: "break" },
+        requestId: "req_pause",
+      },
+      {
+        command: "agent.resume",
+        params: {},
+        requestId: "req_resume",
+      },
+      {
+        command: "agent.redirect",
+        params: { taskId: "task_1" },
+        requestId: "req_redirect",
+      },
+      {
+        command: "agent.kill",
+        params: { force: true, sessionKey: "agent:alpha:main" },
+        requestId: "req_kill",
+      },
+      {
+        command: "agent.restart",
+        params: {},
+        requestId: "req_restart",
+      },
+      {
+        command: "agent.priority.override",
+        params: { priority: "high", durationMs: 1200 },
+        requestId: "req_priority",
+      },
+    ] as const;
+
+    for (const entry of cases) {
+      const result = await asHandler(controls.dispatch)._handler(ctx as never, {
+        agentId: "agent_1",
+        command: entry.command,
+        params: entry.params,
+        requestId: entry.requestId,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.bridgeStatus).toBe("accepted");
+    }
+
+    const payloads = fetchMock.mock.calls.map((call) => {
+      const init = call[1] as RequestInit | undefined;
+      return init?.body ? JSON.parse(init.body as string) : {};
+    });
+
+    expect(payloads).toEqual(
+      expect.arrayContaining(
+        cases.map((entry) =>
+          expect.objectContaining({
+            agentId: "agent_1",
+            command: entry.command,
+            params: entry.params,
+            requestId: entry.requestId,
+          })
+        )
+      )
+    );
+  });
+
   it("dispatches using bridge agent ids when mapped", async () => {
     const { ctx, base } = createActionCtx();
     const agentId = await base.db.insert("agents", {
@@ -232,6 +311,18 @@ describe("controls", () => {
         requestId: "req_invalid",
       })
     ).rejects.toThrow("redirect requires taskId or taskPayload");
+  });
+
+  it("throws on invalid priority override payload", async () => {
+    const { ctx } = createActionCtx();
+    await expect(
+      asHandler(controls.dispatch)._handler(ctx as never, {
+        agentId: "agent_1",
+        command: "agent.priority.override",
+        params: { priority: "urgent" },
+        requestId: "req_invalid_priority",
+      })
+    ).rejects.toThrow();
   });
 
   it("returns error when bridge url is missing", async () => {
@@ -371,6 +462,23 @@ describe("controls", () => {
     expect(result.ok).toBe(true);
     expect(result.bridgeStatus).toBe("accepted");
     expect((result.operations as Array<{ status: string }>).every((op) => op.status === "acked")).toBe(true);
+  });
+
+  it("bulk dispatch records a correlation id for operations", async () => {
+    const { ctx, base } = createActionCtx();
+    mockBridgeResponse({ requestId: "req_bulk_corr", status: "accepted" });
+
+    const result = await asHandler(controls.bulkDispatch)._handler(ctx as never, {
+      agentIds: ["agent_1", "agent_2"],
+      command: "agent.pause",
+      requestId: "req_bulk_corr",
+    });
+
+    expect(result.bulkId).toBe("req_bulk_corr");
+
+    const operations = await base.db.query("agentControlOperations").collect();
+    expect(operations).toHaveLength(2);
+    expect(operations.every((op) => op.bulkId === "req_bulk_corr")).toBe(true);
   });
 
   it("bulk dispatch handles rejected acknowledgments", async () => {
