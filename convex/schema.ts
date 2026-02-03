@@ -281,31 +281,40 @@ export default defineSchema({
   /**
    * Audit Log - Immutable control action records
    */
-  auditLog: defineTable({
+  auditLogs: defineTable({
+    timestamp: v.number(),
+    operatorId: v.string(),
+    operatorEmail: v.optional(v.string()),
     action: v.string(),
-    operationId: v.string(),
-    requestId: v.string(),
-    bulkId: v.optional(v.string()),
-    agentId: v.string(),
-    command: v.string(),
-    params: v.optional(v.any()),
+    targetAgentId: v.string(),
+    parameters: v.optional(v.any()),
     outcome: v.union(
       v.literal("accepted"),
       v.literal("rejected"),
-      v.literal("error")
+      v.literal("error"),
+      v.literal("timed-out"),
+      v.literal("completed")
     ),
-    requestedBy: v.string(),
-    requestedAt: v.number(),
+    sourceIp: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
+    correlationId: v.string(),
+    command: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    operationId: v.optional(v.string()),
+    bulkId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    requestedAt: v.optional(v.number()),
     ackedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
-    error: v.optional(v.string()),
   })
-    .index("by_agent", ["agentId", "requestedAt"])
-    .index("by_requested_by", ["requestedBy", "requestedAt"])
-    .index("by_action", ["action", "requestedAt"])
-    .index("by_operation", ["operationId"])
+    .index("by_target_agent", ["targetAgentId", "timestamp"])
+    .index("by_operator", ["operatorId", "timestamp"])
+    .index("by_action", ["action", "timestamp"])
+    .index("by_correlation", ["correlationId", "timestamp"])
+    .index("by_outcome", ["outcome", "timestamp"])
     .index("by_request", ["requestId"])
-    .index("by_bulk", ["bulkId", "requestedAt"]),
+    .index("by_operation", ["operationId"])
+    .index("by_bulk", ["bulkId", "timestamp"]),
 
   /**
    * Messages - Conversation messages (denormalized for fast queries)

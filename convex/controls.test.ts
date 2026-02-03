@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as controls from "./controls";
 import * as agents from "./agents";
+import * as audit from "./audit";
 import { createMockCtx, asHandler } from "@/test/convex-test-utils";
 
 const originalEnv = {
@@ -14,6 +15,12 @@ const originalFetch = globalThis.fetch;
 function createActionCtx() {
   const base = createMockCtx();
   const runMutation = vi.fn(async (_mutation: unknown, args: Record<string, unknown>) => {
+    if ("entries" in args) {
+      return asHandler(audit.recordBulkAction)._handler(base, args as never);
+    }
+    if ("action" in args && "targetAgentId" in args) {
+      return asHandler(audit.recordControlAction)._handler(base, args as never);
+    }
     if ("operationIds" in args) {
       return asHandler(controls.updateOperationStatus)._handler(base, args as never);
     }
