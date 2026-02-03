@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node -r dotenv/config dist/index.js",
-    "start:notifications": "node -r dotenv/config dist/notification-daemon.js"
+    "start:notifications": "node -r dotenv/config dist/notification-daemon.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
@@ -16,6 +18,8 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.3"
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
